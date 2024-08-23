@@ -1,0 +1,51 @@
+name: Merge Configs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "platform.schema.json"
+      - "values.schema.yaml"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configure git
+        run: git config --global url.https://$GH_ACCESS_TOKEN@github.com/.insteadOf https://github.com/
+        env:
+          GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Clone and update
+        run: |
+          go mod tidy
+          go mod vendor
+
+          # merge configs
+          go run ./hack/merge_schemas.go
+
+          git add vcluster.schema.json
+
+          # if there are no changes, exit early
+          if git diff-index --quiet HEAD --; then
+            exit 0
+          fi
+
+          # set git info
+          git config --global user.name "Loft Bot"
+          git config --global user.email 'loft-bot@users.noreply.github.com'
+          echo "Changes detected"
+
+          # commit changes
+          git commit -m "chore: sync vcluster.schema.json"
+          git push -u origin -f main
+          echo "Pushed commit to main branch"
