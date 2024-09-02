@@ -11,7 +11,7 @@ const (
 )
 
 func main() {
-	err := pkg.RunMergeSchemas(PlatformConfigSchema, ValuesSchema, OutFile)
+	err := pkg.RunMergeSchemas(ValuesSchema, PlatformConfigSchema, OutFile)
 	panicOnErr(err)
 }
 

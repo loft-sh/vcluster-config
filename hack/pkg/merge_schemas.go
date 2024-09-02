@@ -3,6 +3,7 @@ package pkg
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
@@ -83,13 +84,13 @@ func writeSchema(schema *jsonschema.Schema, schemaFile string) error {
 		return err
 	}
 
-	//err = os.MkdirAll(filepath.Dir(schemaFile), os.ModePerm)
-	//if err != nil {
-	//	return err
-	//}
-	//if _, err = os.Create(schemaFile); err != nil {
-	//	return err
-	//}
+	err = os.MkdirAll(filepath.Dir(schemaFile), os.ModePerm)
+	if err != nil {
+		return err
+	}
+	if _, err = os.Create(schemaFile); err != nil {
+		return err
+	}
 
 	err = os.WriteFile(schemaFile, schemaString, os.ModePerm)
 	if err != nil {

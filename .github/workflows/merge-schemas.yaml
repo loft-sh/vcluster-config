@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "platform.schema.json"
-      - "values.schema.yaml"
+      - "values.schema.json"
 
 jobs:
   sync:
@@ -29,6 +29,9 @@ jobs:
         run: |
           go mod tidy
           go mod vendor
+
+          # run tests
+          go test ./hack/pkg -count=1
 
           # merge configs
           go run ./hack/merge_schemas.go
