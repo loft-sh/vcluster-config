@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vcluster.com/schemas/platform-config",
+  "$defs": {
+    "AutoDelete": {
+      "properties": {
+        "afterInactivity": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "AutoSleep": {
+      "properties": {
+        "afterInactivity": {
+          "type": "integer"
+        },
+        "schedule": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "autoWakeup": {
+          "$ref": "#/$defs/AutoWakeup"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "AutoWakeup": {
+      "properties": {
+        "schedule": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  "properties": {
+    "autoSleep": {
+      "$ref": "#/$defs/AutoSleep"
+    },
+    "autoDelete": {
+      "$ref": "#/$defs/AutoDelete"
+    }
+  },
+  "additionalProperties": false,
+  "type": "object"
+}
