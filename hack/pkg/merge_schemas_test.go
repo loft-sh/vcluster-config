@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"github.com/xeipuuv/gojsonschema"
 	"os"
 	"reflect"
 	"testing"
@@ -8,112 +9,61 @@ import (
 
 func TestRunMergeSchemas(t *testing.T) {
 	cases := []struct {
-		valuesSchema, version, outFile string
-		expected                       string
+		valuesSchema   string
+		platformSchema string
+		expected       string
 	}{
 		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-alpha.14",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-alpha.15",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-alpha.16",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-alpha.17",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-alpha.18",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-alpha.19",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-alpha.20",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-alpha.21",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-beta.1",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-beta.2",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-beta.3",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-beta.4",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-beta.5",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-beta.6",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.0.0-beta.7",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.1.0-alpha.0",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.1.0-alpha.1",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.1.0-alpha.2",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.1.0-alpha.3",
-		},
-		{
-			valuesSchema: "testdata/values.schema.json",
-			version:      "v4.1.0-alpha.4",
+			valuesSchema:   "testdata/values.schema.json",
+			platformSchema: "testdata/platform.schema.json",
+			expected:       "testdata/vcluster.schema.json",
 		},
 	}
 
 	for _, tc := range cases {
-		t.Run(tc.version, func(t *testing.T) {
-			outFile, err := os.CreateTemp("", tc.version+"_vcluster.schema.json")
+		t.Run("latest", func(t *testing.T) {
+			outFile, err := os.CreateTemp("", "got_vcluster.schema.json")
 			assertNoError(t, err)
-			expectedOutFileName := "testdata/" + tc.version + "_vcluster.schema.json"
-			platformConfigSchemaFile := "testdata/" + tc.version + "_platform.schema.json"
 			t.Logf("created merged file: %s\n", outFile.Name())
-			err = RunMergeSchemas(tc.valuesSchema, platformConfigSchemaFile, outFile.Name())
+			err = RunMergeSchemas(tc.valuesSchema, tc.platformSchema, outFile.Name())
 			assertNoError(t, err)
-			expected, err := os.ReadFile(expectedOutFileName)
+			expected, err := os.ReadFile(tc.expected)
 			assertNoError(t, err)
 			got, err := os.ReadFile(outFile.Name())
 			assertNoError(t, err)
 			if !reflect.DeepEqual(expected, got) {
-				t.Fatalf("expected merged schema as %s got %s\n", expectedOutFileName, outFile.Name())
+				t.Fatalf("expected merged schema as %s got %s\n", tc.expected, outFile.Name())
 			}
+			cwd, err := os.Getwd()
+			assertNoError(t, err)
+			schemaLoader := gojsonschema.NewReferenceLoader("file://" + cwd + "/testdata/vcluster.schema.json")
+			exampleConfig := `
+{
+	"external": {
+		"platform": {
+			"autoSleep": {
+				"afterInactivity": 100
+			},
+      
+    		"apiKey": {
+				"secretName": "foo",
+      			"namespace": "bar"
+			}
+		}
+	}
+}
+`
+
+			example := gojsonschema.NewStringLoader(exampleConfig)
+			_, err = gojsonschema.Validate(schemaLoader, example)
+			assertNoError(t, err)
+
 		})
 	}
 }
 
 func assertNoError(t *testing.T, err error) {
+	t.Helper()
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}

@@ -35,7 +35,8 @@
     "AutoDelete": {
       "properties": {
         "afterInactivity": {
-          "type": "integer"
+          "type": "integer",
+          "description": "AfterInactivity specifies after how many seconds of inactivity the virtual cluster be deleted\n+optional"
         }
       },
       "additionalProperties": false,
@@ -44,16 +45,20 @@
     "AutoSleep": {
       "properties": {
         "afterInactivity": {
-          "type": "integer"
+          "type": "integer",
+          "description": "AfterInactivity specifies after how many seconds of inactivity the virtual cluster should sleep\n+optional"
         },
         "schedule": {
-          "type": "string"
+          "type": "string",
+          "description": "Schedule specifies scheduled virtual cluster sleep in Cron format, see https://en.wikipedia.org/wiki/Cron.\nNote: timezone defined in the schedule string will be ignored. Use \".Timezone\" field instead.\n+optional"
         },
         "timezone": {
-          "type": "string"
+          "type": "string",
+          "description": "Timezone specifies time zone used for scheduled virtual cluster operations. Defaults to UTC.\nAccepts the same format as time.LoadLocation() in Go (https://pkg.go.dev/time#LoadLocation).\nThe value should be a location name corresponding to a file in the IANA Time Zone database, such as \"America/New_York\".\n+optional"
         },
         "autoWakeup": {
-          "$ref": "#/$defs/AutoWakeup"
+          "$ref": "#/$defs/AutoWakeup",
+          "description": "AutoSleep holds configuration for automatic wakeup\n+optional"
         }
       },
       "additionalProperties": false,
@@ -62,7 +67,8 @@
     "AutoWakeup": {
       "properties": {
         "schedule": {
-          "type": "string"
+          "type": "string",
+          "description": "Schedule specifies scheduled wakeup from sleep in Cron format, see https://en.wikipedia.org/wiki/Cron.\nNote: timezone defined in the schedule string will be ignored. The timezone for the autoSleep schedule will be\nused\n+optional"
         }
       },
       "additionalProperties": false,
@@ -97,6 +103,20 @@
           },
           "type": "array",
           "description": "MutatingWebhooks are mutating webhooks that should be enforced in the virtual cluster"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ClusterStoresSyncConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if this option should be enabled."
+        },
+        "selector": {
+          "$ref": "#/$defs/LabelSelector",
+          "description": "Selector defines what cluster stores should be synced"
         }
       },
       "additionalProperties": false,
@@ -1543,13 +1563,13 @@
     "ExternalConfig": {
       "properties": {
         "platform": {
-          "$ref": "#/defs/PlatformConfig",
+          "$ref": "#/$defs/PlatformConfig",
           "type": "object",
           "description": "platform holds platform configuration"
         }
       },
       "type": "object",
-      "description": "ExternalConfig holds external tool configuration"
+      "description": "ExternalConfig holds external configuration"
     },
     "ExternalEtcdHighAvailability": {
       "properties": {
@@ -1616,6 +1636,43 @@
         "storageClass": {
           "type": "string",
           "description": "StorageClass is the persistent volume claim storage class."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ExternalSecrets": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines whether the external secret integration is enabled or not"
+        },
+        "webhook": {
+          "$ref": "#/$defs/EnableSwitch",
+          "description": "Webhook defines whether the host webhooks are reused or not"
+        },
+        "sync": {
+          "$ref": "#/$defs/ExternalSecretsSync",
+          "description": "Sync defines the syncing behavior for the integration"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "ExternalSecrets reuses a host external secret operator and makes certain CRDs from it available inside the vCluster"
+    },
+    "ExternalSecretsSync": {
+      "properties": {
+        "externalSecrets": {
+          "$ref": "#/$defs/EnableSwitch",
+          "description": "ExternalSecrets defines whether to sync external secrets or not"
+        },
+        "stores": {
+          "$ref": "#/$defs/EnableSwitch",
+          "description": "Stores defines whether to sync stores or not"
+        },
+        "clusterStores": {
+          "$ref": "#/$defs/ClusterStoresSyncConfig",
+          "description": "ClusterStores defines whether to sync cluster stores or not"
         }
       },
       "additionalProperties": false,
@@ -1772,6 +1829,10 @@
         "kubeVirt": {
           "$ref": "#/$defs/KubeVirt",
           "description": "KubeVirt reuses a host kubevirt and makes certain CRDs from it available inside the vCluster"
+        },
+        "externalSecrets": {
+          "$ref": "#/$defs/ExternalSecrets",
+          "description": "ExternalSecrets reuses a host external secret operator and makes certain CRDs from it available inside the vCluster"
         }
       },
       "additionalProperties": false,
@@ -1831,6 +1892,19 @@
       "additionalProperties": false,
       "type": "object",
       "description": "KubeVirtSync are the crds that are supported by this integration"
+    },
+    "LabelSelector": {
+      "properties": {
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "Labels defines what labels should be looked for"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "LabelsAndAnnotations": {
       "properties": {
@@ -2201,13 +2275,38 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "PlatformAPIKey": {
+      "properties": {
+        "secretName": {
+          "type": "string",
+          "description": "SecretName is the name of the secret where the platform access key is stored. This defaults to vcluster-platform-api-key if undefined."
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace defines the namespace where the access key secret should be retrieved from. If this is not equal to the namespace\nwhere the vCluster instance is deployed, you need to make sure vCluster has access to this other namespace."
+        },
+        "createRBAC": {
+          "type": "boolean",
+          "description": "CreateRBAC will automatically create the necessary RBAC roles and role bindings to allow vCluster to read the secret specified\nin the above namespace, if specified.\nThis defaults to true."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "PlatformAPIKey defines where to find the platform access key."
+    },
     "PlatformConfig": {
       "properties": {
+        "apiKey": {
+          "$ref": "#/$defs/PlatformAPIKey",
+          "description": "APIKey defines where to find the platform access key and host. By default, vCluster will search in the following locations in this precedence:\n* environment variable called LICENSE\n* secret specified under external.platform.apiKey.secretName\n* secret called \"vcluster-platform-api-key\" in the vCluster namespace"
+        },
         "autoSleep": {
-          "$ref": "#/$defs/AutoSleep"
+          "$ref": "#/$defs/AutoSleep",
+          "description": "AutoSleep holds configuration for automatic sleep and wakeup\n+optional"
         },
         "autoDelete": {
-          "$ref": "#/$defs/AutoDelete"
+          "$ref": "#/$defs/AutoDelete",
+          "description": "AutoDelete holds configuration for automatic delete\n+optional"
         }
       },
       "type": "object",
@@ -3138,10 +3237,7 @@
         }
       },
       "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "path"
-      ]
+      "type": "object"
     },
     "TranslatePatchExpression": {
       "oneOf": [
@@ -3483,10 +3579,7 @@
       "description": "Experimental features for vCluster. Configuration here might change, so be careful with this."
     },
     "external": {
-      "additionalProperties": {
-        "$ref": "#/$defs/ExternalConfig"
-      },
-      "type": "object",
+      "$ref": "#/$defs/ExternalConfig",
       "description": "External holds configuration for tools that are external to the vCluster."
     },
     "telemetry": {
