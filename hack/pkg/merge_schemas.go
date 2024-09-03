@@ -13,6 +13,7 @@ const (
 	externalConfigName = "ExternalConfig"
 	platformConfigName = "PlatformConfig"
 	platformConfigRef  = "#/defs/" + platformConfigName
+	externalConfigRef  = "#/defs/" + externalConfigName
 )
 
 func RunMergeSchemas(valuesSchemaFile, platformConfigSchemaFile, outFile string) error {
@@ -63,9 +64,12 @@ func addPlatformSchema(platformSchema, toSchema *jsonschema.Schema) {
 			AdditionalProperties: nil,
 			Description:          externalConfigName + " holds external configuration",
 			Properties:           properties,
+			Ref:                  externalConfigRef,
 		}
 	} else {
 		externalConfigNode.Properties = properties
+		externalConfigNode.Description = externalConfigName + " holds external configuration"
+		externalConfigNode.Ref = externalConfigRef
 	}
 	toSchema.Definitions[externalConfigName] = externalConfigNode
 
@@ -74,6 +78,13 @@ func addPlatformSchema(platformSchema, toSchema *jsonschema.Schema) {
 			panic("trying to overwrite definition " + defName + " this is unexpected")
 		}
 		toSchema.Definitions[defName] = node
+	}
+	if externalProperty, ok := toSchema.Properties.Get("external"); !ok {
+		return
+	} else {
+		externalProperty.Ref = externalConfigRef
+		externalProperty.AdditionalProperties = nil
+		externalProperty.Type = ""
 	}
 }
 
