@@ -3,6 +3,7 @@ module github.com/loft-sh/vcluster-config
 go 1.22.0
 
 require (
+	github.com/blang/semver v3.5.1+incompatible
 	github.com/invopop/jsonschema v0.12.0
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	gotest.tools v2.2.0+incompatible
