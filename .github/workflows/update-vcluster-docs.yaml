@@ -1,0 +1,67 @@
+name: Update vcluster docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "vcluster.schema.json"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configure git
+        run: git config --global url.https://$GH_ACCESS_TOKEN@github.com/.insteadOf https://github.com/
+        env:
+          GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+
+      - name: Clone
+        run: |
+          git clone --single-branch https://github.com/loft-sh/vcluster-docs.git
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: vcluster-docs/go.mod
+
+      - name: Clone and update
+        env:
+          VCLUSTER_CONFIG_SHA: ${{ github.sha }}
+        run: |
+          cd vcluster-docs
+
+          # update vcluster-config dependency
+          go get github.com/loft-sh/vcluster-config@"${VCLUSTER_CONFIG_SHA}"
+          go mod tidy
+          go mod vendor
+
+          # generate platform partials
+          go run ./hack/platform/partials/main.go
+
+          # generate vcluster partials
+          go run ./hack/vcluster/partials/main.go
+
+          # if there are no changes, exit early
+          if git diff-index --quiet HEAD --; then
+            exit 0
+          fi
+
+          # set git info
+          git config --global user.name "Loft Bot"
+          git config --global user.email 'loft-bot@users.noreply.github.com'
+          echo "Changes detected"
+
+          # create a new branch
+          git switch -c config-bump-"${VCLUSTER_CONFIG_SHA}"
+
+          # commit changes
+          git commit -m "chore: update config to ${VCLUSTER_CONFIG_SHA} and generate partials"
+          git push -u origin -f config-bump-"${VCLUSTER_CONFIG_SHA}"
+          echo "Pushed commit to main branch"
+
+          # open Pull Request in vcluster-docs
+          gh pr create --title "vcluster-config update ${VCLUSTER_CONFIG_SHA}" --body="Chore: auto update of vcluster-config dependency to ${VCLUSTER_CONFIG_SHA} and partials re-generation"
