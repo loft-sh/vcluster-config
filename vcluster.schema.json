@@ -35,7 +35,8 @@
     "AutoDelete": {
       "properties": {
         "afterInactivity": {
-          "type": "integer"
+          "type": "integer",
+          "description": "AfterInactivity specifies after how many seconds of inactivity the virtual cluster be deleted\n+optional"
         }
       },
       "additionalProperties": false,
@@ -44,16 +45,20 @@
     "AutoSleep": {
       "properties": {
         "afterInactivity": {
-          "type": "integer"
+          "type": "integer",
+          "description": "AfterInactivity specifies after how many seconds of inactivity the virtual cluster should sleep\n+optional"
         },
         "schedule": {
-          "type": "string"
+          "type": "string",
+          "description": "Schedule specifies scheduled virtual cluster sleep in Cron format, see https://en.wikipedia.org/wiki/Cron.\nNote: timezone defined in the schedule string will be ignored. Use \".Timezone\" field instead.\n+optional"
         },
         "timezone": {
-          "type": "string"
+          "type": "string",
+          "description": "Timezone specifies time zone used for scheduled virtual cluster operations. Defaults to UTC.\nAccepts the same format as time.LoadLocation() in Go (https://pkg.go.dev/time#LoadLocation).\nThe value should be a location name corresponding to a file in the IANA Time Zone database, such as \"America/New_York\".\n+optional"
         },
         "autoWakeup": {
-          "$ref": "#/$defs/AutoWakeup"
+          "$ref": "#/$defs/AutoWakeup",
+          "description": "AutoSleep holds configuration for automatic wakeup\n+optional"
         }
       },
       "additionalProperties": false,
@@ -62,7 +67,8 @@
     "AutoWakeup": {
       "properties": {
         "schedule": {
-          "type": "string"
+          "type": "string",
+          "description": "Schedule specifies scheduled wakeup from sleep in Cron format, see https://en.wikipedia.org/wiki/Cron.\nNote: timezone defined in the schedule string will be ignored. The timezone for the autoSleep schedule will be\nused\n+optional"
         }
       },
       "additionalProperties": false,
@@ -2377,10 +2383,12 @@
           "description": "APIKey defines where to find the platform access key and host. By default, vCluster will search in the following locations in this precedence:\n* environment variable called LICENSE\n* secret specified under external.platform.apiKey.secretName\n* secret called \"vcluster-platform-api-key\" in the vCluster namespace"
         },
         "autoSleep": {
-          "$ref": "#/$defs/AutoSleep"
+          "$ref": "#/$defs/AutoSleep",
+          "description": "AutoSleep holds configuration for automatic sleep and wakeup\n+optional"
         },
         "autoDelete": {
-          "$ref": "#/$defs/AutoDelete"
+          "$ref": "#/$defs/AutoDelete",
+          "description": "AutoDelete holds configuration for automatic delete\n+optional"
         }
       },
       "type": "object",
