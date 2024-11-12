@@ -35,7 +35,7 @@ jobs:
           go test ./hack/pkg -count=1
 
           # merge configs
-          go run ./hack/merge_schemas.go
+          go run ./hack/main.go
 
           git add vcluster.schema.json
 
