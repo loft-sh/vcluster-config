@@ -1,4 +1,4 @@
-name: Merge Configs
+name: Update partials in documentation
 
 on:
   push:
@@ -27,37 +27,30 @@ jobs:
         env:
           GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
       - name: Parse version from tag
         id: parseVersion
         run: |
           versionTag=$"${{ github.ref_name }}#"/refs/tags/""
           echo "versionTag=false" >> "$GITHUB_OUTPUT"
 
-      - name: Clone and commit jsonschema
+      - name: Generate vCluster Platform partials
+        if: ${{ startsWith(github.ref_name, 'platform-') }}
         env:
-          VERSION_TAG: ${{ steps.parseVersion.outputs.versionTag }}
+          VERSION_TAG: ${{ github.ref_name }}
         run: |
           # clone docs repo
           git clone --single-branch https://github.com/loft-sh/vcluster-docs.git
-          mkdir -p vcluster-docs/configsrc/${{ env.VERSION_TAG }}
+          versionTag=${VERSION_TAG#"platform-v"}
+          mkdir -p "vcluster-docs/configsrc/platform/${versionTag}"
 
-          cp vcluster.schema.json vcluster-docs/configsrc/${{ env.VERSION_TAG }}/vcluster.schema.json
+          cp vcluster.schema.json "vcluster-docs/configsrc/platform/$versionTag/vcluster.schema.json"
           cd vcluster-docs
 
-          branch_name="generate-partials-for-${{ env.VERSION_TAG }}"
+          branch_name="generate-partials-for-${VERSION_TAG}"
           git switch -c ${branch_name}
 
           # generate platform partials
-          go run hack/platform/partials/main.go configsrc/${{ env.VERSION_TAG }}/vcluster.schema.json
-
-          version=${${{ env.VERSION_TAG }}#"v"}
-          # generate vcluster partials for given version
-          go run hack/vcluster/partials/main.go configsrc/${{ env.VERSION_TAG }}/vcluster.schema.json vcluster_versioned_docs/version-"${version}".0/_partials/config
+          go run hack/platform/partials/main.go "configsrc/platform/${versionTag}/vcluster.schema.json"
 
           git add .
 
@@ -72,7 +65,44 @@ jobs:
           echo "Changes detected"
 
           # commit changes
-          git commit -m "chore: generate vcluster & platform partials for vCluster ${{ env.VERSION_TAG }}"
+          git commit -m "chore: generate vCluster Platform partials for vCluster ${{ env.VERSION_TAG }}"
+          git push -u origin -f ${branch_name}
+          gh pr create --fill
+          echo "Create PR in vcluster-docs"
+
+      - name: Generate vCluster partials
+        if: ${{ startsWith(github.ref_name, 'vcluster-') }}
+        env:
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          # clone docs repo
+          git clone --single-branch https://github.com/loft-sh/vcluster-docs.git
+          versionTag=${VERSION_TAG#"vcluster-v"}
+          mkdir -p "vcluster-docs/configsrc/vcluster/${versionTag}"
+
+          cp vcluster.schema.json "vcluster-docs/configsrc/vcluster/${versionTag}/vcluster.schema.json"
+          cd vcluster-docs
+
+          branch_name="generate-partials-for-${VERSION_TAG}"
+          git switch -c ${branch_name}
+
+          # generate vcluster partials for given version
+          go run hack/vcluster/partials/main.go "configsrc/vcluster/${versionTag}/vcluster.schema.json" "vcluster_versioned_docs/version-${versionTag}.0/_partials/config"
+
+          git add .
+
+          # if there are no changes, exit early
+          if git diff-index --quiet HEAD --; then
+            exit 0
+          fi
+
+          # set git info
+          git config --global user.name "Loft Bot"
+          git config --global user.email 'loft-bot@users.noreply.github.com'
+          echo "Changes detected"
+
+          # commit changes
+          git commit -m "chore: generate vCluster partials for vCluster ${versionTag}"
           git push -u origin -f ${branch_name}
           gh pr create --fill
           echo "Create PR in vcluster-docs"
