@@ -1,0 +1,78 @@
+name: Merge Configs
+
+on:
+  push:
+    tags:
+      - v.*
+    paths:
+      - "vcluster.schema.json"
+  workflow_dispatch:
+    inputs:
+      releaseTag:
+        description: 'Release tag in form vX.Y.Z'
+        required: true
+        type: string
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      version_tag: ${{ steps.parseVersion.outputs.versionTag }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configure git
+        run: git config --global url.https://$GH_ACCESS_TOKEN@github.com/.insteadOf https://github.com/
+        env:
+          GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Parse version from tag
+        id: parseVersion
+        run: |
+          versionTag=$"${{ github.ref_name }}#"/refs/tags/""
+          echo "versionTag=false" >> "$GITHUB_OUTPUT"
+
+      - name: Clone and commit jsonschema
+        env:
+          VERSION_TAG: ${{ steps.parseVersion.outputs.versionTag }}
+        run: |
+          # clone docs repo
+          git clone --single-branch https://github.com/loft-sh/vcluster-docs.git
+          mkdir -p vcluster-docs/configsrc/${{ env.VERSION_TAG }}
+
+          cp vcluster.schema.json vcluster-docs/configsrc/${{ env.VERSION_TAG }}/vcluster.schema.json
+          cd vcluster-docs
+
+          branch_name="generate-partials-for-${{ env.VERSION_TAG }}"
+          git switch -c ${branch_name}
+
+          # generate platform partials
+          go run hack/platform/partials/main.go configsrc/${{ env.VERSION_TAG }}/vcluster.schema.json
+
+          version=${${{ env.VERSION_TAG }}#"v"}
+          # generate vcluster partials for given version
+          go run hack/vcluster/partials/main.go configsrc/${{ env.VERSION_TAG }}/vcluster.schema.json vcluster_versioned_docs/version-"${version}".0/_partials/config
+
+          git add .
+
+          # if there are no changes, exit early
+          if git diff-index --quiet HEAD --; then
+            exit 0
+          fi
+
+          # set git info
+          git config --global user.name "Loft Bot"
+          git config --global user.email 'loft-bot@users.noreply.github.com'
+          echo "Changes detected"
+
+          # commit changes
+          git commit -m "chore: generate vcluster & platform partials for vCluster ${{ env.VERSION_TAG }}"
+          git push -u origin -f ${branch_name}
+          gh pr create --fill
+          echo "Create PR in vcluster-docs"
