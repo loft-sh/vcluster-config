@@ -3,13 +3,12 @@ name: Update partials in documentation
 on:
   push:
     tags:
-      - v.*
-    paths:
-      - "vcluster.schema.json"
+      - vcluster-v.*
+      - platform-v.*
   workflow_dispatch:
     inputs:
       releaseTag:
-        description: 'Release tag in form vX.Y.Z'
+        description: 'Release tag in form vcluster-vX.Y or platform-vX.'
         required: true
         type: string
 
