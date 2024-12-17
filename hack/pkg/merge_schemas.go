@@ -44,14 +44,11 @@ func addPlatformSchema(platformSchema, toSchema *jsonschema.Schema) error {
 		if _, exists := toSchema.Definitions[defName]; exists {
 			collision[defName] = true
 			fmt.Printf("detected name collision: vCluster schema has %s definition, but platform schema has it too. Renaming platform one to %s\n", defName, "Platform"+defName)
+			replaceRefInSchema(platformSchema, "#/$defs/"+defName, "#/$defs/Platform"+defName)
 			toSchema.Definitions["Platform"+defName] = node
 			continue
 		}
 		toSchema.Definitions[defName] = node
-	}
-
-	for k, _ := range collision {
-		replaceRefInSchema(platformSchema, "#/$defs/"+k, "#/$defs/Platform"+k)
 	}
 
 	for defName, def := range toSchema.Definitions {
