@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -38,11 +39,19 @@ func RunMergeSchemas(valuesSchemaFile, platformConfigSchemaFile, outFile string)
 }
 
 func addPlatformSchema(platformSchema, toSchema *jsonschema.Schema) error {
+	collision := make(map[string]bool)
 	for defName, node := range platformSchema.Definitions {
 		if _, exists := toSchema.Definitions[defName]; exists {
-			panic("trying to overwrite definition " + defName + " this is unexpected")
+			collision[defName] = true
+			fmt.Printf("detected name collision: vCluster schema has %s definition, but platform schema has it too. Renaming platform one to %s\n", defName, "Platform"+defName)
+			toSchema.Definitions["Platform"+defName] = node
+			continue
 		}
 		toSchema.Definitions[defName] = node
+	}
+
+	for k, _ := range collision {
+		replaceRefInSchema(platformSchema, "#/$defs/"+k, "#/$defs/Platform"+k)
 	}
 
 	for defName, def := range toSchema.Definitions {
@@ -54,6 +63,22 @@ func addPlatformSchema(platformSchema, toSchema *jsonschema.Schema) error {
 		}
 	}
 	return nil
+}
+
+func replaceRefInSchema(schema *jsonschema.Schema, originalRef, replaceToRef string) {
+	if schema == nil {
+		return
+	}
+	if schema.Ref == originalRef {
+		fmt.Printf("found property with ref %s changing to %s\n", originalRef, replaceToRef)
+		schema.Ref = replaceToRef
+	}
+	for _, node := range schema.Definitions {
+		replaceRefInSchema(node, originalRef, replaceToRef)
+	}
+	for pair := schema.Properties.Oldest(); pair != nil; pair = pair.Next() {
+		replaceRefInSchema(pair.Value, originalRef, replaceToRef)
+	}
 }
 
 func writeSchema(schema *jsonschema.Schema, schemaFile string) error {

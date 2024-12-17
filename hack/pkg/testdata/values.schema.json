@@ -32,6 +32,26 @@
       "type": "object",
       "description": "APIServiceService holds the service name and namespace of the host apiservice."
     },
+    "AutoSleepExclusion": {
+      "properties": {
+        "selector": {
+          "$ref": "#/$defs/LabelSelector"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "AutoSleepExclusion holds conifiguration for excluding workloads from sleeping by label(s)"
+    },
+    "AutoWakeup": {
+      "properties": {
+        "schedule": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "AutoWakeup holds the cron schedule to wake workloads automatically"
+    },
     "BackingStore": {
       "properties": {
         "etcd": {
@@ -61,6 +81,71 @@
           },
           "type": "array",
           "description": "MutatingWebhooks are mutating webhooks that should be enforced in the virtual cluster"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CertManager": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if this option should be enabled."
+        },
+        "sync": {
+          "$ref": "#/$defs/CertManagerSync",
+          "description": "Sync contains advanced configuration for syncing cert-manager resources."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "CertManager reuses a host cert-manager and makes its CRDs from it available inside the vCluster"
+    },
+    "CertManagerSync": {
+      "properties": {
+        "toHost": {
+          "$ref": "#/$defs/CertManagerSyncToHost"
+        },
+        "fromHost": {
+          "$ref": "#/$defs/CertManagerSyncFromHost"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CertManagerSyncFromHost": {
+      "properties": {
+        "clusterIssuers": {
+          "$ref": "#/$defs/ClusterIssuersSyncConfig",
+          "description": "ClusterIssuers defines if (and which) cluster issuers should get synced from the host cluster to the virtual cluster."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CertManagerSyncToHost": {
+      "properties": {
+        "certificates": {
+          "$ref": "#/$defs/EnableSwitch",
+          "description": "Certificates defines if certificates should get synced from the virtual cluster to the host cluster."
+        },
+        "issuers": {
+          "$ref": "#/$defs/EnableSwitch",
+          "description": "Issuers defines if issuers should get synced from the virtual cluster to the host cluster."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ClusterIssuersSyncConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if this option should be enabled."
+        },
+        "selector": {
+          "$ref": "#/$defs/LabelSelector",
+          "description": "Selector defines what cluster issuers should be imported."
         }
       },
       "additionalProperties": false,
@@ -704,7 +789,7 @@
           "description": "Embedded defines that an embedded database (sqlite) should be used as the backend for the virtual cluster"
         },
         "external": {
-          "$ref": "#/$defs/DatabaseKine",
+          "$ref": "#/$defs/ExternalDatabaseKine",
           "description": "External defines that an external database should be used as the backend for the virtual cluster"
         }
       },
@@ -1079,10 +1164,6 @@
     },
     "EtcdDeployHeadlessService": {
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enabled defines if the etcd headless service should be deployed"
-        },
         "annotations": {
           "additionalProperties": {
             "type": "string"
@@ -1204,7 +1285,7 @@
       "properties": {
         "deploy": {
           "$ref": "#/$defs/ExperimentalDeploy",
-          "description": "Deploy allows you to configure manifests and Helm charts to deploy within the virtual cluster."
+          "description": "Deploy allows you to configure manifests and Helm charts to deploy within the host or virtual cluster."
         },
         "syncSettings": {
           "$ref": "#/$defs/ExperimentalSyncSettings",
@@ -1321,11 +1402,11 @@
       "properties": {
         "manifests": {
           "type": "string",
-          "description": "Manifests are raw Kubernetes manifests that should get applied within the virtual cluster."
+          "description": "Manifests are raw Kubernetes manifests that should get applied within the host cluster."
         },
         "manifestsTemplate": {
           "type": "string",
-          "description": "ManifestsTemplate is a Kubernetes manifest template that will be rendered with vCluster values before applying it within the virtual cluster."
+          "description": "ManifestsTemplate is a Kubernetes manifest template that will be rendered with vCluster values before applying it within the host cluster."
         }
       },
       "additionalProperties": false,
@@ -1580,6 +1661,36 @@
       },
       "type": "object",
       "description": "ExternalConfig holds external configuration"
+    },
+    "ExternalDatabaseKine": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if the database should be used."
+        },
+        "dataSource": {
+          "type": "string",
+          "description": "DataSource is the kine dataSource to use for the database. This depends on the database format.\nThis is optional for the embedded database. Examples:\n* mysql: mysql://username:password@tcp(hostname:3306)/k3s\n* postgres: postgres://username:password@hostname:5432/k3s"
+        },
+        "keyFile": {
+          "type": "string",
+          "description": "KeyFile is the key file to use for the database. This is optional."
+        },
+        "certFile": {
+          "type": "string",
+          "description": "CertFile is the cert file to use for the database. This is optional."
+        },
+        "caFile": {
+          "type": "string",
+          "description": "CaFile is the ca file to use for the database. This is optional."
+        },
+        "connector": {
+          "type": "string",
+          "description": "Connector specifies a secret located in a connected vCluster Platform that contains database server connection information\nto be used by Platform to create a database and database user for the vCluster.\nand non-privileged user. A kine endpoint should be created using the database and user on Platform registration.\nThis is optional."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "ExternalEtcdHighAvailability": {
       "properties": {
@@ -1843,6 +1954,10 @@
         "externalSecrets": {
           "$ref": "#/$defs/ExternalSecrets",
           "description": "ExternalSecrets reuses a host external secret operator and makes certain CRDs from it available inside the vCluster"
+        },
+        "certManager": {
+          "$ref": "#/$defs/CertManager",
+          "description": "CertManager reuses a host cert-manager and makes its CRDs from it available inside the vCluster.\n- Certificates and Issuers will be synced from the virtual cluster to the host cluster.\n- ClusterIssuers will be synced from the host cluster to the virtual cluster."
         }
       },
       "additionalProperties": false,
@@ -2883,6 +2998,48 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "SleepMode": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled toggles the sleep mode functionality, allowing for disabling sleep mode without removing other config"
+        },
+        "timeZone": {
+          "type": "string",
+          "description": "Timezone represents the timezone a sleep schedule should run against, defaulting to UTC if unset"
+        },
+        "autoSleep": {
+          "$ref": "#/$defs/SleepModeAutoSleep",
+          "description": "AutoSleep holds autoSleep details"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "SleepMode holds configuration for native/workload only sleep mode"
+    },
+    "SleepModeAutoSleep": {
+      "properties": {
+        "afterInactivity": {
+          "type": "string",
+          "description": "AfterInactivity represents how long a vCluster can be idle before workloads are automaticaly put to sleep"
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Schedule represents a cron schedule for when to sleep workloads"
+        },
+        "wakeup": {
+          "$ref": "#/$defs/AutoWakeup",
+          "description": "Wakeup holds configuration for waking the vCluster on a schedule rather than waiting for some activity."
+        },
+        "exclude": {
+          "$ref": "#/$defs/AutoSleepExclusion",
+          "description": "Exclude holds configuration for labels that, if present, will prevent a workload from going to sleep"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "SleepModeAutoSleep holds configuration for allowing a vCluster to sleep its workloads automatically"
+    },
     "StatefulSetImage": {
       "properties": {
         "registry": {
@@ -2995,6 +3152,10 @@
           "type": "boolean",
           "description": "Enabled defines if this option should be enabled."
         },
+        "scope": {
+          "type": "string",
+          "description": "Scope defines the scope of the resource"
+        },
         "patches": {
           "items": {
             "$ref": "#/$defs/TranslatePatch"
@@ -3004,7 +3165,11 @@
         }
       },
       "additionalProperties": false,
-      "type": "object"
+      "type": "object",
+      "required": [
+        "enabled",
+        "scope"
+      ]
     },
     "SyncNodeSelector": {
       "properties": {
@@ -3198,6 +3363,10 @@
           "type": "boolean",
           "description": "Enabled defines if this option should be enabled."
         },
+        "scope": {
+          "type": "string",
+          "description": "Scope defines the scope of the resource. If undefined, will use Namespaced. Currently only Namespaced is supported."
+        },
         "patches": {
           "items": {
             "$ref": "#/$defs/TranslatePatch"
@@ -3207,7 +3376,10 @@
         }
       },
       "additionalProperties": false,
-      "type": "object"
+      "type": "object",
+      "required": [
+        "enabled"
+      ]
     },
     "Telemetry": {
       "properties": {
@@ -3255,7 +3427,10 @@
         }
       },
       "additionalProperties": false,
-      "type": "object"
+      "type": "object",
+      "required": [
+        "path"
+      ]
     },
     "TranslatePatchLabels": {
       "properties": {},
@@ -3605,6 +3780,10 @@
         "$ref": "#/$defs/Plugin"
       },
       "description": "Plugin specifies which vCluster plugins to enable. Use \"plugins\" instead. Do not use this option anymore."
+    },
+    "sleepMode": {
+      "$ref": "#/$defs/SleepMode",
+      "description": "SleepMode holds the native sleep mode configuration for Pro clusters"
     }
   },
   "additionalProperties": false,
