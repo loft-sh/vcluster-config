@@ -32,6 +32,26 @@
       "type": "object",
       "description": "APIServiceService holds the service name and namespace of the host apiservice."
     },
+    "AutoSleepExclusion": {
+      "properties": {
+        "selector": {
+          "$ref": "#/$defs/LabelSelector"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "AutoSleepExclusion holds conifiguration for excluding workloads from sleeping by label(s)"
+    },
+    "AutoWakeup": {
+      "properties": {
+        "schedule": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "AutoWakeup holds the cron schedule to wake workloads automatically"
+    },
     "BackingStore": {
       "properties": {
         "etcd": {
@@ -61,6 +81,71 @@
           },
           "type": "array",
           "description": "MutatingWebhooks are mutating webhooks that should be enforced in the virtual cluster"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CertManager": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if this option should be enabled."
+        },
+        "sync": {
+          "$ref": "#/$defs/CertManagerSync",
+          "description": "Sync contains advanced configuration for syncing cert-manager resources."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "CertManager reuses a host cert-manager and makes its CRDs from it available inside the vCluster"
+    },
+    "CertManagerSync": {
+      "properties": {
+        "toHost": {
+          "$ref": "#/$defs/CertManagerSyncToHost"
+        },
+        "fromHost": {
+          "$ref": "#/$defs/CertManagerSyncFromHost"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CertManagerSyncFromHost": {
+      "properties": {
+        "clusterIssuers": {
+          "$ref": "#/$defs/ClusterIssuersSyncConfig",
+          "description": "ClusterIssuers defines if (and which) cluster issuers should get synced from the host cluster to the virtual cluster."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CertManagerSyncToHost": {
+      "properties": {
+        "certificates": {
+          "$ref": "#/$defs/EnableSwitch",
+          "description": "Certificates defines if certificates should get synced from the virtual cluster to the host cluster."
+        },
+        "issuers": {
+          "$ref": "#/$defs/EnableSwitch",
+          "description": "Issuers defines if issuers should get synced from the virtual cluster to the host cluster."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ClusterIssuersSyncConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if this option should be enabled."
+        },
+        "selector": {
+          "$ref": "#/$defs/LabelSelector",
+          "description": "Selector defines what cluster issuers should be imported."
         }
       },
       "additionalProperties": false,
@@ -956,7 +1041,7 @@
         },
         "version": {
           "type": "string",
-          "description": "Version specifies k8s components (scheduler, kube-controller-manager \u0026 apiserver) version.\nIt is a shortcut for controlPlane.distro.k8s.apiServer.image.tag,\ncontrolPlane.distro.k8s.controllerManager.image.tag and\ncontrolPlane.distro.k8s.scheduler.image.tag\nIf e.g. controlPlane.distro.k8s.version is set to v1.30.1 and\ncontrolPlane.distro.k8s.scheduler.image.tag\n(or controlPlane.distro.k8s.controllerManager.image.tag or controlPlane.distro.k8s.apiServer.image.tag)\nis set to v1.31.0,\nvalue from controlPlane.distro.k8s.\u003ccontrolPlane-component\u003e.image.tag will be used\n(where \u003ccontrolPlane-component is apiServer, controllerManager and scheduler)."
+          "description": "Version specifies k8s components (scheduler, kube-controller-manager \u0026 apiserver) version.\nIt is a shortcut for controlPlane.distro.k8s.apiServer.image.tag,\ncontrolPlane.distro.k8s.controllerManager.image.tag and\ncontrolPlane.distro.k8s.scheduler.image.tag\nIf e.g. controlPlane.distro.k8s.version is set to v1.30.1 and\ncontrolPlane.distro.k8s.scheduler.image.tag\n(or controlPlane.distro.k8s.controllerManager.image.tag or controlPlane.distro.k8s.apiServer.image.tag)\nis set to v1.31.0,\nvalue from controlPlane.distro.k8s.(controlPlane-component).image.tag will be used\n(where controlPlane-component is apiServer, controllerManager and scheduler)."
         },
         "apiServer": {
           "$ref": "#/$defs/DistroContainerEnabled",
@@ -1200,7 +1285,7 @@
       "properties": {
         "deploy": {
           "$ref": "#/$defs/ExperimentalDeploy",
-          "description": "Deploy allows you to configure manifests and Helm charts to deploy within the virtual cluster."
+          "description": "Deploy allows you to configure manifests and Helm charts to deploy within the host or virtual cluster."
         },
         "syncSettings": {
           "$ref": "#/$defs/ExperimentalSyncSettings",
@@ -1230,6 +1315,10 @@
           "type": "array",
           "description": "DenyProxyRequests denies certain requests in the vCluster proxy.",
           "pro": true
+        },
+        "sleepMode": {
+          "$ref": "#/$defs/SleepMode",
+          "description": "SleepMode holds the native sleep mode configuration for Pro clusters"
         }
       },
       "additionalProperties": false,
@@ -1317,11 +1406,11 @@
       "properties": {
         "manifests": {
           "type": "string",
-          "description": "Manifests are raw Kubernetes manifests that should get applied within the virtual cluster."
+          "description": "Manifests are raw Kubernetes manifests that should get applied within the host cluster."
         },
         "manifestsTemplate": {
           "type": "string",
-          "description": "ManifestsTemplate is a Kubernetes manifest template that will be rendered with vCluster values before applying it within the virtual cluster."
+          "description": "ManifestsTemplate is a Kubernetes manifest template that will be rendered with vCluster values before applying it within the host cluster."
         }
       },
       "additionalProperties": false,
@@ -1869,6 +1958,10 @@
         "externalSecrets": {
           "$ref": "#/$defs/ExternalSecrets",
           "description": "ExternalSecrets reuses a host external secret operator and makes certain CRDs from it available inside the vCluster"
+        },
+        "certManager": {
+          "$ref": "#/$defs/CertManager",
+          "description": "CertManager reuses a host cert-manager and makes its CRDs from it available inside the vCluster.\n- Certificates and Issuers will be synced from the virtual cluster to the host cluster.\n- ClusterIssuers will be synced from the host cluster to the virtual cluster."
         }
       },
       "additionalProperties": false,
@@ -2908,6 +3001,48 @@
       },
       "additionalProperties": false,
       "type": "object"
+    },
+    "SleepMode": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled toggles the sleep mode functionality, allowing for disabling sleep mode without removing other config"
+        },
+        "timeZone": {
+          "type": "string",
+          "description": "Timezone represents the timezone a sleep schedule should run against, defaulting to UTC if unset"
+        },
+        "autoSleep": {
+          "$ref": "#/$defs/SleepModeAutoSleep",
+          "description": "AutoSleep holds autoSleep details"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "SleepMode holds configuration for native/workload only sleep mode"
+    },
+    "SleepModeAutoSleep": {
+      "properties": {
+        "afterInactivity": {
+          "type": "string",
+          "description": "AfterInactivity represents how long a vCluster can be idle before workloads are automaticaly put to sleep"
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Schedule represents a cron schedule for when to sleep workloads"
+        },
+        "wakeup": {
+          "$ref": "#/$defs/AutoWakeup",
+          "description": "Wakeup holds configuration for waking the vCluster on a schedule rather than waiting for some activity."
+        },
+        "exclude": {
+          "$ref": "#/$defs/AutoSleepExclusion",
+          "description": "Exclude holds configuration for labels that, if present, will prevent a workload from going to sleep"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "SleepModeAutoSleep holds configuration for allowing a vCluster to sleep its workloads automatically"
     },
     "StatefulSetImage": {
       "properties": {

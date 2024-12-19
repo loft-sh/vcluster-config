@@ -76,9 +76,6 @@ type Config struct {
 
 	// Plugin specifies which vCluster plugins to enable. Use "plugins" instead. Do not use this option anymore.
 	Plugin map[string]Plugin `json:"plugin,omitempty"`
-
-	// SleepMode holds the native sleep mode configuration for Pro clusters
-	SleepMode *SleepMode `json:"sleepMode,omitempty"`
 }
 
 // Integrations holds config for vCluster integrations with other operators or tools running on the host cluster
@@ -1007,8 +1004,8 @@ type DistroK8s struct {
 	// controlPlane.distro.k8s.scheduler.image.tag
 	//(or controlPlane.distro.k8s.controllerManager.image.tag or controlPlane.distro.k8s.apiServer.image.tag)
 	// is set to v1.31.0,
-	// value from controlPlane.distro.k8s.<controlPlane-component>.image.tag will be used
-	// (where <controlPlane-component is apiServer, controllerManager and scheduler).
+	// value from controlPlane.distro.k8s.(controlPlane-component).image.tag will be used
+	// (where controlPlane-component is apiServer, controllerManager and scheduler).
 	Version string `json:"version,omitempty"`
 
 	// APIServer holds configuration specific to starting the api server.
@@ -1923,6 +1920,9 @@ type Experimental struct {
 
 	// DenyProxyRequests denies certain requests in the vCluster proxy.
 	DenyProxyRequests []DenyRule `json:"denyProxyRequests,omitempty" product:"pro"`
+
+	// SleepMode holds the native sleep mode configuration for Pro clusters
+	SleepMode *SleepMode `json:"sleepMode,omitempty"`
 }
 
 func (e Experimental) JSONSchemaExtend(base *jsonschema.Schema) {
