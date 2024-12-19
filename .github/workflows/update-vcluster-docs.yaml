@@ -7,8 +7,8 @@ permissions:
 on:
   push:
     tags:
-      - vcluster-v.*
-      - platform-v.*
+      - vcluster-v*
+      - platform-v*
   workflow_dispatch:
     inputs:
       releaseTag:
