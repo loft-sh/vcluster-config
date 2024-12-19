@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       releaseTag:
-        description: 'Release tag in form vcluster-vX.Y or platform-vX.'
+        description: 'Release tag in form vcluster-vX.Y (e.g. vcluster-v0.22) or platform-vX. (e.g. platform-v4)'
         required: true
         type: string
 
@@ -20,10 +20,27 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     outputs:
-      version_tag: ${{ steps.parseVersion.outputs.versionTag }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
     steps:
+      - name: Determine release tag
+        id: release
+        env:
+          MANUAL_TAG: ${{ inputs.releaseTag }}
+        run: |
+          if [[ -n "${MANUAL_TAG}" ]]; then
+            echo "Manually set tag: ${MANUAL_TAG}"
+            final_tag=${MANUAL_TAG}
+          else
+            echo "Tag from release event: ${{ github.event.release.tag_name }}"
+            final_tag=${{ github.event.release.tag_name }}
+          fi
+          echo "release_tag=${final_tag}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-tags: 'true'
+          ref: 'refs/tags/${{ steps.release.outputs.release_tag }}'
 
       - name: Configure git
         run: |
@@ -32,12 +49,6 @@ jobs:
           git config --global url.https://$GH_ACCESS_TOKEN@github.com/.insteadOf https://github.com/
         env:
           GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
-
-      - name: Parse version from tag
-        id: parseVersion
-        run: |
-          versionTag=$"${{ github.ref_name }}#"/refs/tags/""
-          echo "versionTag=false" >> "$GITHUB_OUTPUT"
 
       - name: Clone vcluster-docs
         run: git clone --single-branch https://github.com/loft-sh/vcluster-docs.git
@@ -48,11 +59,13 @@ jobs:
           go-version-file: vcluster-docs/go.mod
 
       - name: Generate vCluster Platform partials
-        if: ${{ startsWith(github.ref_name, 'platform-') }}
+        if: ${{ startsWith(steps.release.outputs.release_tag, 'platform-') }}
         env:
-          VERSION_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+          VERSION_TAG: ${{ steps.release.outputs.release_tag }}
         run: |
           versionTag=${VERSION_TAG#"platform-v"}
+          echo "parsed vCluster Platform tag: ${versionTag}"
           mkdir -p "vcluster-docs/configsrc/platform/${versionTag}"
 
           cp vcluster.schema.json "vcluster-docs/configsrc/platform/$versionTag/vcluster.schema.json"
@@ -78,11 +91,13 @@ jobs:
           echo "Create PR in vcluster-docs"
 
       - name: Generate vCluster partials
-        if: ${{ startsWith(github.ref_name, 'vcluster-') }}
+        if: ${{ startsWith(steps.release.outputs.release_tag, 'vcluster-') }}
         env:
-          VERSION_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+          VERSION_TAG: ${{ steps.release.outputs.release_tag }}
         run: |
           versionTag=${VERSION_TAG#"vcluster-v"}
+          echo "parsed vCluster tag: ${versionTag}"
           mkdir -p "vcluster-docs/configsrc/vcluster/${versionTag}"
 
           cp vcluster.schema.json "vcluster-docs/configsrc/vcluster/${versionTag}/vcluster.schema.json"
