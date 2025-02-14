@@ -504,6 +504,38 @@ type EnableSwitchWithPatches struct {
 	Patches []TranslatePatch `json:"patches,omitempty"`
 }
 
+type EnableSwitchWithResourcesMappings struct {
+	// Enabled defines if this option should be enabled.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Patches patch the resource according to the provided specification.
+	Patches []TranslatePatch `json:"patches,omitempty"`
+
+	// Selector for Namespace and Object
+	Selector FromHostSelector `json:"selector,omitempty"`
+}
+
+type FromHostSelector struct {
+	// Mappings is a map of host-object-namespace/host-object-name: virtual-object-namespace/virtual-object-name.
+	// There are several wildcards supported:
+	// 1. To match all objects in host namespace and sync them to different namespace in vCluster:
+	// mappings:
+	//   "foo/*": "foo-in-virtual/*"
+	// 2. To match specific object in the host namespace and sync it to the same namespace with the same name:
+	// mappings:
+	//   "foo/my-object": "foo/my-object"
+	// 3. To match specific object in the host namespace and sync it to the same namespace with different name:
+	// mappings:
+	//   "foo/my-object": "foo/my-virtual-object"
+	// 4. To match all objects in the vCluster host namespace and sync them to a different namespace in vCluster:
+	// mappings:
+	//   "": "my-virtual-namespace/*"
+	// 5. To match specific objects in the vCluster host namespace and sync them to a different namespace in vCluster:
+	// mappings:
+	//   "/my-object": "my-virtual-namespace/my-object"
+	Mappings map[string]string `json:"mappings,omitempty"`
+}
+
 type SyncFromHost struct {
 	// Nodes defines if nodes should get synced from the host cluster to the virtual cluster, but not back.
 	Nodes SyncNodes `json:"nodes,omitempty"`
@@ -537,6 +569,12 @@ type SyncFromHost struct {
 
 	// VolumeSnapshotClasses defines if volume snapshot classes created within the virtual cluster should get synced to the host cluster.
 	VolumeSnapshotClasses EnableSwitchWithPatches `json:"volumeSnapshotClasses,omitempty"`
+
+	// ConfigMaps defines if config maps in the host should get synced to the virtual cluster.
+	ConfigMaps EnableSwitchWithResourcesMappings `json:"configMaps,omitempty"`
+
+	// Secrets defines if secrets in the host should get synced to the virtual cluster.
+	Secrets EnableSwitchWithResourcesMappings `json:"secrets,omitempty"`
 }
 
 type SyncToHostCustomResource struct {
@@ -608,6 +646,9 @@ type SyncFromHostCustomResource struct {
 
 	// Patches patch the resource according to the provided specification.
 	Patches []TranslatePatch `json:"patches,omitempty"`
+
+	// Selector for Namespace and Object
+	Selector FromHostSelector `json:"selector,omitempty"`
 }
 
 type EnableAutoSwitch struct {
@@ -653,6 +694,9 @@ type SyncPods struct {
 	// UseSecretsForSATokens will use secrets to save the generated service account tokens by virtual cluster instead of using a
 	// pod annotation.
 	UseSecretsForSATokens bool `json:"useSecretsForSATokens,omitempty"`
+
+	// RuntimeClassName is the runtime class to set for synced pods.
+	RuntimeClassName string `json:"runtimeClassName,omitempty"`
 
 	// RewriteHosts is a special option needed to rewrite statefulset containers to allow the correct FQDN. virtual cluster will add
 	// a small container to each stateful set pod that will initially rewrite the /etc/hosts file to match the FQDN expected by
