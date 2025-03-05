@@ -77,6 +77,9 @@ type Config struct {
 
 	// Plugin specifies which vCluster plugins to enable. Use "plugins" instead. Do not use this option anymore.
 	Plugin map[string]Plugin `json:"plugin,omitempty"`
+
+	// SleepMode holds the native sleep mode configuration for Pro clusters
+	SleepMode *SleepMode `json:"sleepMode,omitempty"`
 }
 
 // Integrations holds config for vCluster integrations with other operators or tools running on the host cluster
@@ -1973,9 +1976,6 @@ type Experimental struct {
 	// DenyProxyRequests denies certain requests in the vCluster proxy.
 	DenyProxyRequests []DenyRule `json:"denyProxyRequests,omitempty" product:"pro"`
 
-	// SleepMode holds the native sleep mode configuration for Pro clusters
-	SleepMode *SleepMode `json:"sleepMode,omitempty"`
-
 	// ReuseNamespace allows reusing the same namespace to create multiple vClusters.
 	// This flag is deprecated, as this scenario will be removed entirely in upcoming releases.
 	ReuseNamespace bool `json:"reuseNamespace,omitempty"`
@@ -2404,6 +2404,8 @@ type SleepMode struct {
 	TimeZone string `json:"timeZone,omitempty"`
 	// AutoSleep holds autoSleep details
 	AutoSleep SleepModeAutoSleep `json:"autoSleep,omitempty"`
+	// AutoWakeup holds configuration for waking the vCluster on a schedule rather than waiting for some activity.
+	AutoWakeup AutoWakeup `json:"autoWakeup,omitempty"`
 }
 
 // SleepModeAutoSleep holds configuration for allowing a vCluster to sleep its workloads
@@ -2414,9 +2416,6 @@ type SleepModeAutoSleep struct {
 
 	// Schedule represents a cron schedule for when to sleep workloads
 	Schedule string `json:"schedule,omitempty"`
-
-	// Wakeup holds configuration for waking the vCluster on a schedule rather than waiting for some activity.
-	Wakeup AutoWakeup `json:"wakeup,omitempty"`
 
 	// Exclude holds configuration for labels that, if present, will prevent a workload from going to sleep
 	Exclude AutoSleepExclusion `json:"exclude,omitempty"`
