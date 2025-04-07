@@ -1155,27 +1155,6 @@
       "additionalProperties": false,
       "type": "object"
     },
-    "EnableSwitchWithResourcesMappings": {
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enabled defines if this option should be enabled."
-        },
-        "patches": {
-          "items": {
-            "$ref": "#/$defs/TranslatePatch"
-          },
-          "type": "array",
-          "description": "Patches patch the resource according to the provided specification."
-        },
-        "mappings": {
-          "$ref": "#/$defs/FromHostMappings",
-          "description": "Mappings for Namespace and Object"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
     "Etcd": {
       "properties": {
         "embedded": {
@@ -1363,9 +1342,9 @@
           "type": "array",
           "description": "DenyProxyRequests denies certain requests in the vCluster proxy."
         },
-        "reuseNamespace": {
-          "type": "boolean",
-          "description": "ReuseNamespace allows reusing the same namespace to create multiple vClusters.\nThis flag is deprecated, as this scenario will be removed entirely in upcoming releases."
+        "sleepMode": {
+          "$ref": "#/$defs/SleepMode",
+          "description": "SleepMode holds the native sleep mode configuration for Pro clusters"
         }
       },
       "additionalProperties": false,
@@ -1660,50 +1639,12 @@
         },
         "secret": {
           "$ref": "#/$defs/ExportKubeConfigSecretReference",
-          "description": "Declare in which host cluster secret vCluster should store the generated virtual cluster kubeconfig.\nIf this is not defined, vCluster will create it with `vc-NAME`. If you specify another name,\nvCluster creates the config in this other secret.\n\nDeprecated: Use AdditionalSecrets instead."
-        },
-        "additionalSecrets": {
-          "items": {
-            "$ref": "#/$defs/ExportKubeConfigAdditionalSecretReference"
-          },
-          "type": "array",
-          "description": "AdditionalSecrets specifies the additional host cluster secrets in which vCluster will store the\ngenerated virtual cluster kubeconfigs."
+          "description": "Declare in which host cluster secret vCluster should store the generated virtual cluster kubeconfig.\nIf this is not defined, vCluster will create it with `vc-NAME`. If you specify another name,\nvCluster creates the config in this other secret."
         }
       },
       "additionalProperties": false,
       "type": "object",
       "description": "ExportKubeConfig describes how vCluster should export the vCluster kubeconfig."
-    },
-    "ExportKubeConfigAdditionalSecretReference": {
-      "properties": {
-        "context": {
-          "type": "string",
-          "description": "Context is the name of the context within the generated kubeconfig to use."
-        },
-        "server": {
-          "type": "string",
-          "description": "Override the default https://localhost:8443 and specify a custom hostname for the generated kubeconfig."
-        },
-        "insecure": {
-          "type": "boolean",
-          "description": "If tls should get skipped for the server"
-        },
-        "serviceAccount": {
-          "$ref": "#/$defs/ExportKubeConfigServiceAccount",
-          "description": "ServiceAccount can be used to generate a service account token instead of the default certificates."
-        },
-        "name": {
-          "type": "string",
-          "description": "Name is the name of the secret where the kubeconfig is stored."
-        },
-        "namespace": {
-          "type": "string",
-          "description": "Namespace where vCluster stores the kubeconfig secret. If this is not equal to the namespace\nwhere you deployed vCluster, you need to make sure vCluster has access to this other namespace."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "ExportKubeConfigAdditionalSecretReference defines the additional host cluster secret in which vCluster stores the generated virtual cluster kubeconfigs."
     },
     "ExportKubeConfigSecretReference": {
       "properties": {
@@ -1881,19 +1822,6 @@
         "clusterStores": {
           "$ref": "#/$defs/ClusterStoresSyncConfig",
           "description": "ClusterStores defines whether to sync cluster stores or not"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "FromHostMappings": {
-      "properties": {
-        "byName": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object",
-          "description": "ByName is a map of host-object-namespace/host-object-name: virtual-object-namespace/virtual-object-name.\nThere are several wildcards supported:\n1. To match all objects in host namespace and sync them to different namespace in vCluster:\nbyName:\n  \"foo/*\": \"foo-in-virtual/*\"\n2. To match specific object in the host namespace and sync it to the same namespace with the same name:\nbyName:\n  \"foo/my-object\": \"foo/my-object\"\n3. To match specific object in the host namespace and sync it to the same namespace with different name:\nbyName:\n  \"foo/my-object\": \"foo/my-virtual-object\"\n4. To match all objects in the vCluster host namespace and sync them to a different namespace in vCluster:\nbyName:\n  \"\": \"my-virtual-namespace/*\"\n5. To match specific objects in the vCluster host namespace and sync them to a different namespace in vCluster:\nbyName:\n  \"/my-object\": \"my-virtual-namespace/my-object\""
         }
       },
       "additionalProperties": false,
@@ -3127,10 +3055,6 @@
         "autoSleep": {
           "$ref": "#/$defs/SleepModeAutoSleep",
           "description": "AutoSleep holds autoSleep details"
-        },
-        "autoWakeup": {
-          "$ref": "#/$defs/AutoWakeup",
-          "description": "AutoWakeup holds configuration for waking the vCluster on a schedule rather than waiting for some activity."
         }
       },
       "additionalProperties": false,
@@ -3146,6 +3070,10 @@
         "schedule": {
           "type": "string",
           "description": "Schedule represents a cron schedule for when to sleep workloads"
+        },
+        "wakeup": {
+          "$ref": "#/$defs/AutoWakeup",
+          "description": "Wakeup holds configuration for waking the vCluster on a schedule rather than waiting for some activity."
         },
         "exclude": {
           "$ref": "#/$defs/AutoSleepExclusion",
@@ -3257,14 +3185,6 @@
         "volumeSnapshotClasses": {
           "$ref": "#/$defs/EnableSwitchWithPatches",
           "description": "VolumeSnapshotClasses defines if volume snapshot classes created within the virtual cluster should get synced to the host cluster."
-        },
-        "configMaps": {
-          "$ref": "#/$defs/EnableSwitchWithResourcesMappings",
-          "description": "ConfigMaps defines if config maps in the host should get synced to the virtual cluster."
-        },
-        "secrets": {
-          "$ref": "#/$defs/EnableSwitchWithResourcesMappings",
-          "description": "Secrets defines if secrets in the host should get synced to the virtual cluster."
         }
       },
       "additionalProperties": false,
@@ -3286,10 +3206,6 @@
           },
           "type": "array",
           "description": "Patches patch the resource according to the provided specification."
-        },
-        "mappings": {
-          "$ref": "#/$defs/FromHostMappings",
-          "description": "Mappings for Namespace and Object"
         }
       },
       "additionalProperties": false,
@@ -3368,14 +3284,6 @@
         "useSecretsForSATokens": {
           "type": "boolean",
           "description": "UseSecretsForSATokens will use secrets to save the generated service account tokens by virtual cluster instead of using a\npod annotation."
-        },
-        "runtimeClassName": {
-          "type": "string",
-          "description": "RuntimeClassName is the runtime class to set for synced pods."
-        },
-        "priorityClassName": {
-          "type": "string",
-          "description": "PriorityClassName is the priority class to set for synced pods."
         },
         "rewriteHosts": {
           "$ref": "#/$defs/SyncRewriteHosts",
@@ -3916,10 +3824,6 @@
         "$ref": "#/$defs/Plugin"
       },
       "description": "Plugin specifies which vCluster plugins to enable. Use \"plugins\" instead. Do not use this option anymore."
-    },
-    "sleepMode": {
-      "$ref": "#/$defs/SleepMode",
-      "description": "SleepMode holds the native sleep mode configuration for Pro clusters"
     }
   },
   "additionalProperties": false,
