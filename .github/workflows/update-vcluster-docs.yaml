@@ -89,7 +89,7 @@ jobs:
           # commit changes
           git commit -m "chore: generate vCluster Platform partials for vCluster ${{ env.VERSION_TAG }}"
           git push -u origin -f ${branch_name}
-          gh pr create --fill
+          gh pr create --fill --head ${branch_name} 
           echo "Create PR in vcluster-docs"
 
       - name: Generate vCluster partials
@@ -123,5 +123,5 @@ jobs:
           # commit changes
           git commit -m "chore: generate vCluster partials for vCluster ${versionTag}"
           git push -u origin -f ${branch_name}
-          gh pr create --fill
+          gh pr create --fill --head ${branch_name} 
           echo "Create PR in vcluster-docs"
