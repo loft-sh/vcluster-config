@@ -42,6 +42,7 @@ jobs:
           fetch-tags: 'true'
           ref: 'refs/tags/${{ steps.release.outputs.release_tag }}'
           ssh-key: ${{ secrets.DEPLOY_KEY }}
+          fetch-depth: 0
 
       - name: Configure git
         run: |
