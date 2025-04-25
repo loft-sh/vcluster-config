@@ -903,6 +903,14 @@
     },
     "DistroContainer": {
       "properties": {
+        "image": {
+          "$ref": "#/$defs/Image",
+          "description": "Image is the distro image"
+        },
+        "imagePullPolicy": {
+          "type": "string",
+          "description": "ImagePullPolicy is the pull policy for the distro image"
+        },
         "command": {
           "items": {
             "type": "string"
@@ -926,6 +934,14 @@
         "enabled": {
           "type": "boolean",
           "description": "Enabled signals this container should be enabled."
+        },
+        "image": {
+          "$ref": "#/$defs/Image",
+          "description": "Image is the distro image"
+        },
+        "imagePullPolicy": {
+          "type": "string",
+          "description": "ImagePullPolicy is the pull policy for the distro image"
         },
         "command": {
           "items": {
@@ -955,14 +971,6 @@
           "type": "string",
           "description": "Config allows you to override the k0s config passed to the k0s binary."
         },
-        "image": {
-          "$ref": "#/$defs/Image",
-          "description": "Image is the distro image"
-        },
-        "imagePullPolicy": {
-          "type": "string",
-          "description": "ImagePullPolicy is the pull policy for the distro image"
-        },
         "env": {
           "items": {
             "type": "object"
@@ -977,6 +985,14 @@
         "securityContext": {
           "type": "object",
           "description": "Security options can be used for the distro init container"
+        },
+        "image": {
+          "$ref": "#/$defs/Image",
+          "description": "Image is the distro image"
+        },
+        "imagePullPolicy": {
+          "type": "string",
+          "description": "ImagePullPolicy is the pull policy for the distro image"
         },
         "command": {
           "items": {
@@ -1006,14 +1022,6 @@
           "type": "string",
           "description": "Token is the K3s token to use. If empty, vCluster will choose one."
         },
-        "image": {
-          "$ref": "#/$defs/Image",
-          "description": "Image is the distro image"
-        },
-        "imagePullPolicy": {
-          "type": "string",
-          "description": "ImagePullPolicy is the pull policy for the distro image"
-        },
         "env": {
           "items": {
             "type": "object"
@@ -1028,6 +1036,14 @@
         "securityContext": {
           "type": "object",
           "description": "Security options can be used for the distro init container"
+        },
+        "image": {
+          "$ref": "#/$defs/Image",
+          "description": "Image is the distro image"
+        },
+        "imagePullPolicy": {
+          "type": "string",
+          "description": "ImagePullPolicy is the pull policy for the distro image"
         },
         "command": {
           "items": {
@@ -1055,7 +1071,7 @@
         },
         "version": {
           "type": "string",
-          "description": "Version specifies k8s components (scheduler, kube-controller-manager \u0026 apiserver) version.\nIt is a shortcut for controlPlane.distro.k8s.image.tag"
+          "description": "Version specifies k8s components (scheduler, kube-controller-manager \u0026 apiserver) version.\nIt is a shortcut for controlPlane.distro.k8s.apiServer.image.tag,\ncontrolPlane.distro.k8s.controllerManager.image.tag and\ncontrolPlane.distro.k8s.scheduler.image.tag\nIf e.g. controlPlane.distro.k8s.version is set to v1.30.1 and\ncontrolPlane.distro.k8s.scheduler.image.tag\n(or controlPlane.distro.k8s.controllerManager.image.tag or controlPlane.distro.k8s.apiServer.image.tag)\nis set to v1.31.0,\nvalue from controlPlane.distro.k8s.(controlPlane-component).image.tag will be used\n(where controlPlane-component is apiServer, controllerManager and scheduler)."
         },
         "apiServer": {
           "$ref": "#/$defs/DistroContainerEnabled",
@@ -1068,14 +1084,6 @@
         "scheduler": {
           "$ref": "#/$defs/DistroContainer",
           "description": "Scheduler holds configuration specific to starting the scheduler. Enable this via controlPlane.advanced.virtualScheduler.enabled"
-        },
-        "image": {
-          "$ref": "#/$defs/Image",
-          "description": "Image is the distro image"
-        },
-        "imagePullPolicy": {
-          "type": "string",
-          "description": "ImagePullPolicy is the pull policy for the distro image"
         },
         "env": {
           "items": {
@@ -1177,10 +1185,6 @@
         "deploy": {
           "$ref": "#/$defs/EtcdDeploy",
           "description": "Deploy defines to use an external etcd that is deployed by the helm chart"
-        },
-        "external": {
-          "$ref": "#/$defs/EtcdExternal",
-          "description": "External defines to use a self-hosted external etcd that is not deployed by the helm chart"
         }
       },
       "additionalProperties": false,
@@ -1321,51 +1325,10 @@
         "migrateFromDeployedEtcd": {
           "type": "boolean",
           "description": "MigrateFromDeployedEtcd signals that vCluster should migrate from the deployed external etcd to embedded etcd."
-        },
-        "snapshotCount": {
-          "type": "integer",
-          "description": "SnapshotCount defines the number of snapshots to keep for the embedded etcd. Defaults to 10000 if less than 1."
         }
       },
       "additionalProperties": false,
       "type": "object"
-    },
-    "EtcdExternal": {
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enabled defines if the external etcd should be used."
-        },
-        "endpoint": {
-          "type": "string",
-          "description": "Endpoint holds the endpoint of the external etcd server, e.g. my-example-service:2379"
-        },
-        "tls": {
-          "$ref": "#/$defs/EtcdExternalTLS",
-          "description": "TLS defines the tls configuration for the external etcd server"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "EtcdExternalTLS": {
-      "properties": {
-        "caFile": {
-          "type": "string",
-          "description": "CaFile is the path to the ca file"
-        },
-        "certFile": {
-          "type": "string",
-          "description": "CertFile is the path to the cert file"
-        },
-        "keyFile": {
-          "type": "string",
-          "description": "KeyFile is the path to the key file"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "EtcdExternalTLS defines tls for external etcd server"
     },
     "Experimental": {
       "properties": {
@@ -1399,6 +1362,10 @@
           },
           "type": "array",
           "description": "DenyProxyRequests denies certain requests in the vCluster proxy."
+        },
+        "sleepMode": {
+          "$ref": "#/$defs/SleepMode",
+          "description": "SleepMode holds the native sleep mode configuration for Pro clusters"
         },
         "reuseNamespace": {
           "type": "boolean",
@@ -1697,50 +1664,12 @@
         },
         "secret": {
           "$ref": "#/$defs/ExportKubeConfigSecretReference",
-          "description": "Declare in which host cluster secret vCluster should store the generated virtual cluster kubeconfig.\nIf this is not defined, vCluster will create it with `vc-NAME`. If you specify another name,\nvCluster creates the config in this other secret.\n\nDeprecated: Use AdditionalSecrets instead."
-        },
-        "additionalSecrets": {
-          "items": {
-            "$ref": "#/$defs/ExportKubeConfigAdditionalSecretReference"
-          },
-          "type": "array",
-          "description": "AdditionalSecrets specifies the additional host cluster secrets in which vCluster will store the\ngenerated virtual cluster kubeconfigs."
+          "description": "Declare in which host cluster secret vCluster should store the generated virtual cluster kubeconfig.\nIf this is not defined, vCluster will create it with `vc-NAME`. If you specify another name,\nvCluster creates the config in this other secret."
         }
       },
       "additionalProperties": false,
       "type": "object",
       "description": "ExportKubeConfig describes how vCluster should export the vCluster kubeconfig."
-    },
-    "ExportKubeConfigAdditionalSecretReference": {
-      "properties": {
-        "context": {
-          "type": "string",
-          "description": "Context is the name of the context within the generated kubeconfig to use."
-        },
-        "server": {
-          "type": "string",
-          "description": "Override the default https://localhost:8443 and specify a custom hostname for the generated kubeconfig."
-        },
-        "insecure": {
-          "type": "boolean",
-          "description": "If tls should get skipped for the server"
-        },
-        "serviceAccount": {
-          "$ref": "#/$defs/ExportKubeConfigServiceAccount",
-          "description": "ServiceAccount can be used to generate a service account token instead of the default certificates."
-        },
-        "name": {
-          "type": "string",
-          "description": "Name is the name of the secret where the kubeconfig is stored."
-        },
-        "namespace": {
-          "type": "string",
-          "description": "Namespace where vCluster stores the kubeconfig secret. If this is not equal to the namespace\nwhere you deployed vCluster, you need to make sure vCluster has access to this other namespace."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "ExportKubeConfigAdditionalSecretReference defines the additional host cluster secret in which vCluster stores the generated virtual cluster kubeconfigs."
     },
     "ExportKubeConfigSecretReference": {
       "properties": {
@@ -1909,15 +1838,15 @@
       "properties": {
         "externalSecrets": {
           "$ref": "#/$defs/EnableSwitch",
-          "description": "ExternalSecrets defines if external secrets should get synced from the virtual cluster to the host cluster."
+          "description": "ExternalSecrets defines whether to sync external secrets or not"
         },
         "stores": {
           "$ref": "#/$defs/EnableSwitch",
-          "description": "Stores defines if secret stores should get synced from the virtual cluster to the host cluster and then bi-directionally."
+          "description": "Stores defines whether to sync stores or not"
         },
         "clusterStores": {
           "$ref": "#/$defs/ClusterStoresSyncConfig",
-          "description": "ClusterStores defines if cluster secrets stores should get synced from the host cluster to the virtual cluster."
+          "description": "ClusterStores defines whether to sync cluster stores or not"
         }
       },
       "additionalProperties": false,
@@ -2090,57 +2019,16 @@
         },
         "externalSecrets": {
           "$ref": "#/$defs/ExternalSecrets",
-          "description": "ExternalSecrets reuses a host external secret operator and makes certain CRDs from it available inside the vCluster.\n- ExternalSecrets will be synced from the virtual cluster to the host cluster.\n- SecretStores will be synced from the virtual cluster to the host cluster and then bi-directionally.\n- ClusterSecretStores will be synced from the host cluster to the virtual cluster."
+          "description": "ExternalSecrets reuses a host external secret operator and makes certain CRDs from it available inside the vCluster"
         },
         "certManager": {
           "$ref": "#/$defs/CertManager",
           "description": "CertManager reuses a host cert-manager and makes its CRDs from it available inside the vCluster.\n- Certificates and Issuers will be synced from the virtual cluster to the host cluster.\n- ClusterIssuers will be synced from the host cluster to the virtual cluster."
-        },
-        "istio": {
-          "$ref": "#/$defs/Istio",
-          "description": "Istio syncs DestinationRules, Gateways and VirtualServices from virtual cluster to the host."
         }
       },
       "additionalProperties": false,
       "type": "object",
       "description": "Integrations holds config for vCluster integrations with other operators or tools running on the host cluster"
-    },
-    "Istio": {
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enabled defines if this option should be enabled."
-        },
-        "sync": {
-          "$ref": "#/$defs/IstioSync"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "IstioSync": {
-      "properties": {
-        "toHost": {
-          "$ref": "#/$defs/IstioSyncToHost"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "IstioSyncToHost": {
-      "properties": {
-        "destinationRules": {
-          "$ref": "#/$defs/EnableSwitch"
-        },
-        "gateways": {
-          "$ref": "#/$defs/EnableSwitch"
-        },
-        "virtualServices": {
-          "$ref": "#/$defs/EnableSwitch"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
     },
     "KubeVirt": {
       "properties": {
@@ -2388,26 +2276,10 @@
           "description": "Enabled defines if the network policy should be deployed by vCluster."
         },
         "fallbackDns": {
-          "type": "string",
-          "description": "FallbackDNS is the fallback DNS server to use if the virtual cluster does not have a DNS server."
+          "type": "string"
         },
         "outgoingConnections": {
-          "$ref": "#/$defs/OutgoingConnections",
-          "description": "OutgoingConnections are the outgoing connections options for the vCluster workloads."
-        },
-        "extraControlPlaneRules": {
-          "items": {
-            "type": "object"
-          },
-          "type": "array",
-          "description": "ExtraControlPlaneRules are extra allowed rules for the vCluster control plane."
-        },
-        "extraWorkloadRules": {
-          "items": {
-            "type": "object"
-          },
-          "type": "array",
-          "description": "ExtraWorkloadRules are extra allowed rules for the vCluster workloads."
+          "$ref": "#/$defs/OutgoingConnections"
         },
         "annotations": {
           "additionalProperties": {
@@ -3221,10 +3093,6 @@
         "autoSleep": {
           "$ref": "#/$defs/SleepModeAutoSleep",
           "description": "AutoSleep holds autoSleep details"
-        },
-        "autoWakeup": {
-          "$ref": "#/$defs/AutoWakeup",
-          "description": "AutoWakeup holds configuration for waking the vCluster on a schedule rather than waiting for some activity."
         }
       },
       "additionalProperties": false,
@@ -3240,6 +3108,10 @@
         "schedule": {
           "type": "string",
           "description": "Schedule represents a cron schedule for when to sleep workloads"
+        },
+        "wakeup": {
+          "$ref": "#/$defs/AutoWakeup",
+          "description": "Wakeup holds configuration for waking the vCluster on a schedule rather than waiting for some activity."
         },
         "exclude": {
           "$ref": "#/$defs/AutoSleepExclusion",
@@ -4010,10 +3882,6 @@
         "$ref": "#/$defs/Plugin"
       },
       "description": "Plugin specifies which vCluster plugins to enable. Use \"plugins\" instead. Do not use this option anymore."
-    },
-    "sleepMode": {
-      "$ref": "#/$defs/SleepMode",
-      "description": "SleepMode holds the native sleep mode configuration for Pro clusters"
     }
   },
   "additionalProperties": false,
