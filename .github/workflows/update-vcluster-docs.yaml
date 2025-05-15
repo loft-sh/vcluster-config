@@ -31,8 +31,9 @@ jobs:
             echo "Manually set tag: ${MANUAL_TAG}"
             final_tag=${MANUAL_TAG}
           else
-            echo "Tag from release event: ${{ github.event.release.tag_name }}"
-            final_tag=${{ github.event.release.tag_name }}
+            # For tag push events, use github.ref_name instead
+            echo "Tag from push event: ${{ github.ref_name }}"
+            final_tag=${{ github.ref_name }}
           fi
           echo "release_tag=${final_tag}" >> "$GITHUB_OUTPUT"
 
