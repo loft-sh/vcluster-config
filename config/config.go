@@ -48,6 +48,9 @@ type Config struct {
 	// Integrations holds config for vCluster integrations with other operators or tools running on the host cluster
 	Integrations Integrations `json:"integrations,omitempty"`
 
+	// Deploy holds configuration for the deployment of vCluster.
+	Deploy Deploy `json:"deploy,omitempty"`
+
 	// Networking options related to the virtual cluster.
 	Networking Networking `json:"networking,omitempty"`
 
@@ -101,11 +104,22 @@ type PrivateNodes struct {
 	// joining new nodes into the cluster without having to download the binaries from the internet.
 	ImportNodeBinaries bool `json:"importNodeBinaries,omitempty"`
 
+	// Kubelet holds kubelet configuration that is used for all nodes.
+	Kubelet Kubelet `json:"kubelet,omitempty"`
+
+	// AutoUpgrade holds configuration for auto upgrade.
+	AutoUpgrade AutoUpgrade `json:"autoUpgrade,omitempty"`
+
+	// JoinNode holds configuration specifically used during joining the node (see "kubeadm join").
+	JoinNode JoinConfiguration `json:"joinNode,omitempty"`
+}
+
+type Deploy struct {
 	// KubeProxy holds dedicated kube proxy configuration.
 	KubeProxy KubeProxy `json:"kubeProxy,omitempty"`
 
-	// Kubelet holds kubelet configuration that is used for all nodes.
-	Kubelet Kubelet `json:"kubelet,omitempty"`
+	// Metallb holds dedicated metallb configuration.
+	Metallb Metallb `json:"metallb,omitempty"`
 
 	// CNI holds dedicated CNI configuration.
 	CNI CNI `json:"cni,omitempty"`
@@ -113,11 +127,38 @@ type PrivateNodes struct {
 	// LocalPathProvisioner holds dedicated local path provisioner configuration.
 	LocalPathProvisioner LocalPathProvisioner `json:"localPathProvisioner,omitempty"`
 
-	// AutoUpgrade holds configuration for auto upgrade.
-	AutoUpgrade AutoUpgrade `json:"autoUpgrade,omitempty"`
+	// IngressNginx holds dedicated ingress-nginx configuration.
+	IngressNginx IngressNginx `json:"ingressNginx,omitempty"`
+}
 
-	// JoinNode holds configuration specifically used during joining the node (see "kubeadm join").
-	JoinNode JoinConfiguration `json:"joinNode,omitempty"`
+type IngressNginx struct {
+	// Enabled defines if ingress-nginx should be enabled.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// DefaultIngressClass defines if the deployed ingress class should be the default ingress class.
+	DefaultIngressClass bool `json:"defaultIngressClass,omitempty"`
+}
+
+type Metallb struct {
+	// Enabled defines if metallb should be enabled.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// ControllerImage is the image for metallb controller.
+	ControllerImage string `json:"controllerImage,omitempty"`
+
+	// SpeakerImage is the image for metallb speaker.
+	SpeakerImage string `json:"speakerImage,omitempty"`
+
+	// IPAddressPool is the IP address pool to use for metallb.
+	IPAddressPool MetallbIPAddressPool `json:"ipAddressPool,omitempty"`
+}
+
+type MetallbIPAddressPool struct {
+	// Addresses is a list of IP addresses to use for the IP address pool.
+	Addresses []string `json:"addresses,omitempty"`
+
+	// L2Advertisement defines if L2 advertisement should be enabled for the IP address pool.
+	L2Advertisement bool `json:"l2Advertisement,omitempty"`
 }
 
 type Standalone struct {
@@ -129,6 +170,9 @@ type Standalone struct {
 
 	// BundleRepository is the repository to use for downloading the Kubernetes bundle. Defaults to https://github.com/loft-sh/kubernetes/releases/download
 	BundleRepository string `json:"bundleRepository,omitempty"`
+
+	// Bundle is a path to a Kubernetes bundle to use for the standalone mode. If empty, will use the bundleRepository to download the bundle.
+	Bundle string `json:"bundle,omitempty"`
 
 	// JoinNode holds configuration for the standalone control plane node.
 	JoinNode StandaloneJoinNode `json:"joinNode,omitempty"`
@@ -171,8 +215,53 @@ type ContainerdJoin struct {
 	// Enabled defines if containerd should be installed and configured by vCluster.
 	Enabled bool `json:"enabled,omitempty"`
 
+	// Registry holds configuration for how containerd should be configured to use a registries.
+	Registry ContainerdRegistry `json:"registry,omitempty"`
+
+	// ImportImages is a list of images to import into the containerd registry from local files. If the path is a folder, all files that end with .tar or .tar.gz in the folder will be imported.
+	ImportImages []string `json:"importImages,omitempty"`
+
 	// PauseImage is the image for the pause container.
 	PauseImage string `json:"pauseImage,omitempty"`
+}
+
+type ContainerdRegistry struct {
+	// ConfigPath is the path to the containerd registry config.
+	ConfigPath string `json:"configPath,omitempty"`
+
+	// Mirrors holds configuration for the containerd registry mirrors. E.g. myregistry.io:5000 or docker.io. See https://github.com/containerd/containerd/blob/main/docs/hosts.md for more details.
+	Mirrors map[string]ContainerdMirror `json:"mirrors,omitempty"`
+}
+
+type ContainerdMirror struct {
+	// Server is the fallback server to use for the containerd registry mirror. E.g. https://registry-1.docker.io. See https://github.com/containerd/containerd/blob/main/docs/hosts.md for more details.
+	Server string `json:"server,omitempty"`
+
+	// CACert are paths to CA certificates to use for the containerd registry mirror.
+	CACert []string `json:"caCert,omitempty"`
+
+	// SkipVerify is a boolean to skip the certificate verification for the containerd registry mirror and allows http connections.
+	SkipVerify bool `json:"skipVerify,omitempty"`
+
+	// Capabilities is a list of capabilities to enable for the containerd registry mirror. If empty, will use pull and resolve capabilities.
+	Capabilities []string `json:"capabilities,omitempty"`
+
+	// Hosts holds configuration for the containerd registry mirror hosts. See https://github.com/containerd/containerd/blob/main/docs/hosts.md for more details.
+	Hosts []ContainerdMirrorHost `json:"hosts,omitempty"`
+}
+
+type ContainerdMirrorHost struct {
+	// Server is the server to use for the containerd registry mirror host. E.g. http://192.168.31.250:5000.
+	Server string `json:"server,omitempty"`
+
+	// CACert are paths to CA certificates to use for the containerd registry mirror host.
+	CACert []string `json:"caCert,omitempty"`
+
+	// SkipVerify is a boolean to skip the certificate verification for the containerd registry mirror and allows http connections.
+	SkipVerify bool `json:"skipVerify,omitempty"`
+
+	// Capabilities is a list of capabilities to enable for the containerd registry mirror. If empty, will use pull and resolve capabilities.
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 type NodeRegistration struct {
@@ -228,6 +317,9 @@ type LocalPathProvisioner struct {
 
 	// ImagePullPolicy is the policy how to pull the image.
 	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
+
+	// NodePath is the path on the node where to create the persistent volume directories.
+	NodePath string `json:"nodePath,omitempty"`
 }
 
 type CNI struct {
@@ -731,6 +823,10 @@ func (c *Config) IsProFeatureEnabled() bool {
 		return true
 	}
 
+	if c.Sync.ToHost.Pods.HybridScheduling.Enabled {
+		return true
+	}
+
 	return false
 }
 
@@ -978,6 +1074,11 @@ type SyncFromHost struct {
 
 type StandardLabelSelector v1.LabelSelector
 
+func (s StandardLabelSelector) Empty() bool {
+	selector, err := s.ToSelector()
+	return err == nil && selector.Empty()
+}
+
 func (s StandardLabelSelector) Matches(obj client.Object) (bool, error) {
 	selector, err := s.ToSelector()
 	if err != nil {
@@ -1021,27 +1122,6 @@ type SyncToHostNamespaces struct {
 
 	// ExtraLabels are additional labels to add to the namespace in the host cluster.
 	ExtraLabels map[string]string `json:"extraLabels,omitempty"`
-
-	// HostNamespaces defines configuration for handling host namespaces.
-	HostNamespaces SyncHostSettings `json:"hostNamespaces,omitempty"`
-}
-
-// HostDeletionPolicy defines the policy for deletion of synced host resources.
-type HostDeletionPolicy string
-
-const (
-	// HostDeletionPolicyAll signifies a policy affecting all resources in host cluster matching any of syncing rules.
-	HostDeletionPolicyAll HostDeletionPolicy = "all"
-	// HostDeletionPolicySynced signifies a policy affecting only resources in host cluster created through syncing process from vCluster.
-	HostDeletionPolicySynced HostDeletionPolicy = "synced"
-	// HostDeletionPolicyNone signifies that no host resources are affected by this policy.
-	HostDeletionPolicyNone HostDeletionPolicy = "none"
-)
-
-type SyncHostSettings struct {
-	// Cleanup defines the cleanup policy for host resources when vCluster is deleted.
-	// Allowed values: "all", "synced", "none".
-	Cleanup HostDeletionPolicy `json:"cleanup,omitempty"`
 }
 
 type SyncToHostCustomResource struct {
@@ -1966,8 +2046,22 @@ type ControlPlaneAdvanced struct {
 	// Konnectivity holds dedicated konnectivity configuration. This is only available when privateNodes.enabled is true.
 	Konnectivity Konnectivity `json:"konnectivity,omitempty"`
 
+	// Registry allows enabling an embedded docker image registry in vCluster. This is useful for air-gapped environments or when you don't have a public registry available to distribute images.
+	Registry Registry `json:"registry,omitempty"`
+
 	// GlobalMetadata is metadata that will be added to all resources deployed by Helm.
 	GlobalMetadata ControlPlaneGlobalMetadata `json:"globalMetadata,omitempty"`
+}
+
+type Registry struct {
+	// Enabled defines if the embedded registry should be enabled.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// AnonymousPull allows enabling anonymous pull for the embedded registry. This allows anybody to pull images from the registry without authentication.
+	AnonymousPull bool `json:"anonymousPull,omitempty"`
+
+	// Config is the regular docker registry config. See https://distribution.github.io/distribution/about/configuration/ for more details.
+	Config interface{} `json:"config,omitempty"`
 }
 
 type ControlPlaneHeadlessService struct {

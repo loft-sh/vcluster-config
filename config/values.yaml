@@ -57,8 +57,6 @@ sync:
     namespaces:
       enabled: false
       mappingsOnly: false
-      hostNamespaces:
-        cleanup: "synced"
 
   fromHost:
     events:
@@ -419,6 +417,11 @@ controlPlane:
         extraEnv: []
         extraArgs: []
 
+    registry:
+      enabled: false
+      anonymousPull: true
+      config: {}
+
     globalMetadata:
       annotations: {}
 
@@ -431,6 +434,8 @@ privateNodes:
   joinNode:
     containerd:
       enabled: true
+
+deploy:
   localPathProvisioner:
     enabled: true
   cni:
@@ -444,6 +449,14 @@ privateNodes:
     tolerations: []
     extraEnv: []
     extraArgs: []
+  metallb:
+    enabled: false
+    ipAddressPool:
+      addresses: []
+      l2Advertisement: true
+  ingressNginx:
+    enabled: false
+    defaultIngressClass: true
 
 integrations:
   metricsServer:

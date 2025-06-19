@@ -244,9 +244,100 @@
           "type": "boolean",
           "description": "Enabled defines if containerd should be installed and configured by vCluster."
         },
+        "registry": {
+          "$ref": "#/$defs/ContainerdRegistry",
+          "description": "Registry holds configuration for how containerd should be configured to use a registries."
+        },
+        "importImages": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "ImportImages is a list of images to import into the containerd registry from local files. If the path is a folder, all files that end with .tar or .tar.gz in the folder will be imported."
+        },
         "pauseImage": {
           "type": "string",
           "description": "PauseImage is the image for the pause container."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ContainerdMirror": {
+      "properties": {
+        "server": {
+          "type": "string",
+          "description": "Server is the fallback server to use for the containerd registry mirror. E.g. https://registry-1.docker.io. See https://github.com/containerd/containerd/blob/main/docs/hosts.md for more details."
+        },
+        "caCert": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "CACert are paths to CA certificates to use for the containerd registry mirror."
+        },
+        "skipVerify": {
+          "type": "boolean",
+          "description": "SkipVerify is a boolean to skip the certificate verification for the containerd registry mirror and allows http connections."
+        },
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Capabilities is a list of capabilities to enable for the containerd registry mirror. If empty, will use pull and resolve capabilities."
+        },
+        "hosts": {
+          "items": {
+            "$ref": "#/$defs/ContainerdMirrorHost"
+          },
+          "type": "array",
+          "description": "Hosts holds configuration for the containerd registry mirror hosts. See https://github.com/containerd/containerd/blob/main/docs/hosts.md for more details."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ContainerdMirrorHost": {
+      "properties": {
+        "server": {
+          "type": "string",
+          "description": "Server is the server to use for the containerd registry mirror host. E.g. http://192.168.31.250:5000."
+        },
+        "caCert": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "CACert are paths to CA certificates to use for the containerd registry mirror host."
+        },
+        "skipVerify": {
+          "type": "boolean",
+          "description": "SkipVerify is a boolean to skip the certificate verification for the containerd registry mirror and allows http connections."
+        },
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Capabilities is a list of capabilities to enable for the containerd registry mirror. If empty, will use pull and resolve capabilities."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ContainerdRegistry": {
+      "properties": {
+        "configPath": {
+          "type": "string",
+          "description": "ConfigPath is the path to the containerd registry config."
+        },
+        "mirrors": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ContainerdMirror"
+          },
+          "type": "object",
+          "description": "Mirrors holds configuration for the containerd registry mirrors. E.g. myregistry.io:5000 or docker.io. See https://github.com/containerd/containerd/blob/main/docs/hosts.md for more details."
         }
       },
       "additionalProperties": false,
@@ -332,6 +423,10 @@
         "konnectivity": {
           "$ref": "#/$defs/Konnectivity",
           "description": "Konnectivity holds dedicated konnectivity configuration. This is only available when privateNodes.enabled is true."
+        },
+        "registry": {
+          "$ref": "#/$defs/Registry",
+          "description": "Registry allows enabling an embedded docker image registry in vCluster. This is useful for air-gapped environments or when you don't have a public registry available to distribute images."
         },
         "globalMetadata": {
           "$ref": "#/$defs/ControlPlaneGlobalMetadata",
@@ -958,6 +1053,32 @@
           },
           "type": "array",
           "description": "ExcludedUsers describe a list of users for which the checks will be skipped.\nImpersonation attempts on these users will still be subjected to the checks."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Deploy": {
+      "properties": {
+        "kubeProxy": {
+          "$ref": "#/$defs/KubeProxy",
+          "description": "KubeProxy holds dedicated kube proxy configuration."
+        },
+        "metallb": {
+          "$ref": "#/$defs/Metallb",
+          "description": "Metallb holds dedicated metallb configuration."
+        },
+        "cni": {
+          "$ref": "#/$defs/CNI",
+          "description": "CNI holds dedicated CNI configuration."
+        },
+        "localPathProvisioner": {
+          "$ref": "#/$defs/LocalPathProvisioner",
+          "description": "LocalPathProvisioner holds dedicated local path provisioner configuration."
+        },
+        "ingressNginx": {
+          "$ref": "#/$defs/IngressNginx",
+          "description": "IngressNginx holds dedicated ingress-nginx configuration."
         }
       },
       "additionalProperties": false,
@@ -2134,6 +2255,20 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "IngressNginx": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if ingress-nginx should be enabled."
+        },
+        "defaultIngressClass": {
+          "type": "boolean",
+          "description": "DefaultIngressClass defines if the deployed ingress class should be the default ingress class."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "Integrations": {
       "properties": {
         "metricsServer": {
@@ -2599,6 +2734,10 @@
         "imagePullPolicy": {
           "type": "string",
           "description": "ImagePullPolicy is the policy how to pull the image."
+        },
+        "nodePath": {
+          "type": "string",
+          "description": "NodePath is the path on the node where to create the persistent volume directories."
         }
       },
       "additionalProperties": false,
@@ -2614,6 +2753,45 @@
       "additionalProperties": false,
       "type": "object",
       "description": "Logging holds the log encoding details"
+    },
+    "Metallb": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if metallb should be enabled."
+        },
+        "controllerImage": {
+          "type": "string",
+          "description": "ControllerImage is the image for metallb controller."
+        },
+        "speakerImage": {
+          "type": "string",
+          "description": "SpeakerImage is the image for metallb speaker."
+        },
+        "ipAddressPool": {
+          "$ref": "#/$defs/MetallbIPAddressPool",
+          "description": "IPAddressPool is the IP address pool to use for metallb."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "MetallbIPAddressPool": {
+      "properties": {
+        "addresses": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Addresses is a list of IP addresses to use for the IP address pool."
+        },
+        "l2Advertisement": {
+          "type": "boolean",
+          "description": "L2Advertisement defines if L2 advertisement should be enabled for the IP address pool."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "MetricsServer": {
       "properties": {
@@ -3261,21 +3439,9 @@
           "type": "boolean",
           "description": "ImportNodeBinaries defines to use the loft-sh/kubernetes:VERSION-full image to also copy the node binaries to the control plane. This allows upgrades and\njoining new nodes into the cluster without having to download the binaries from the internet."
         },
-        "kubeProxy": {
-          "$ref": "#/$defs/KubeProxy",
-          "description": "KubeProxy holds dedicated kube proxy configuration."
-        },
         "kubelet": {
           "$ref": "#/$defs/Kubelet",
           "description": "Kubelet holds kubelet configuration that is used for all nodes."
-        },
-        "cni": {
-          "$ref": "#/$defs/CNI",
-          "description": "CNI holds dedicated CNI configuration."
-        },
-        "localPathProvisioner": {
-          "$ref": "#/$defs/LocalPathProvisioner",
-          "description": "LocalPathProvisioner holds dedicated local path provisioner configuration."
         },
         "autoUpgrade": {
           "$ref": "#/$defs/AutoUpgrade",
@@ -3422,6 +3588,23 @@
       "additionalProperties": false,
       "type": "object",
       "description": "ReadinessProbe defines the configuration for the readiness probe."
+    },
+    "Registry": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled defines if the embedded registry should be enabled."
+        },
+        "anonymousPull": {
+          "type": "boolean",
+          "description": "AnonymousPull allows enabling anonymous pull for the embedded registry. This allows anybody to pull images from the registry without authentication."
+        },
+        "config": {
+          "description": "Config is the regular docker registry config. See https://distribution.github.io/distribution/about/configuration/ for more details."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "ReplicateServices": {
       "properties": {
@@ -3696,6 +3879,10 @@
           "type": "string",
           "description": "BundleRepository is the repository to use for downloading the Kubernetes bundle. Defaults to https://github.com/loft-sh/kubernetes/releases/download"
         },
+        "bundle": {
+          "type": "string",
+          "description": "Bundle is a path to a Kubernetes bundle to use for the standalone mode. If empty, will use the bundleRepository to download the bundle."
+        },
         "joinNode": {
           "$ref": "#/$defs/StandaloneJoinNode",
           "description": "JoinNode holds configuration for the standalone control plane node."
@@ -3934,16 +4121,6 @@
         "enabled",
         "scope"
       ]
-    },
-    "SyncHostSettings": {
-      "properties": {
-        "cleanup": {
-          "type": "string",
-          "description": "Cleanup defines the cleanup policy for host resources when vCluster is deleted.\nAllowed values: \"all\", \"synced\", \"none\"."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
     },
     "SyncNodeSelector": {
       "properties": {
@@ -4198,10 +4375,6 @@
           },
           "type": "object",
           "description": "ExtraLabels are additional labels to add to the namespace in the host cluster."
-        },
-        "hostNamespaces": {
-          "$ref": "#/$defs/SyncHostSettings",
-          "description": "HostNamespaces defines configuration for handling host namespaces."
         }
       },
       "additionalProperties": false,
@@ -4530,6 +4703,10 @@
     "integrations": {
       "$ref": "#/$defs/Integrations",
       "description": "Integrations holds config for vCluster integrations with other operators or tools running on the host cluster"
+    },
+    "deploy": {
+      "$ref": "#/$defs/Deploy",
+      "description": "Deploy holds configuration for the deployment of vCluster."
     },
     "networking": {
       "$ref": "#/$defs/Networking",
