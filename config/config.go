@@ -173,6 +173,10 @@ type Standalone struct {
 	// Enabled defines if standalone mode should be enabled.
 	Enabled bool `json:"enabled,omitempty"`
 
+	// SyncConfig allows controlling the vCluster config through a secret "vcluster-config" in the namespace "kube-system". vCluster will watch for changes in this secret and
+	// update the local config accordingly and restart vCluster if needed.
+	SyncConfig StandaloneSyncConfig `json:"syncConfig,omitempty"`
+
 	// DataDir defines the data directory for the standalone mode.
 	DataDir string `json:"dataDir,omitempty"`
 
@@ -186,12 +190,14 @@ type Standalone struct {
 	JoinNode StandaloneJoinNode `json:"joinNode,omitempty"`
 }
 
+type StandaloneSyncConfig struct {
+	// Enabled defines if config syncing should be enabled.
+	Enabled bool `json:"enabled,omitempty"`
+}
+
 type StandaloneJoinNode struct {
 	// Enabled defines if the standalone node should be joined into the cluster. If false, only the control plane binaries will be executed and no node will show up in the actual cluster.
 	Enabled bool `json:"enabled,omitempty"`
-
-	// Name defines the name of the standalone node. If empty the node will get the hostname as name.
-	Name string `json:"name,omitempty"`
 
 	JoinConfiguration `json:",inline"`
 }
@@ -534,11 +540,17 @@ type ExternalSecrets struct {
 }
 
 type ExternalSecretsSync struct {
+	// ToHost defines what resources are synced from the virtual cluster to the host
+	ToHost ExternalSecretsSyncToHostConfig `json:"toHost,omitempty"`
+	// FromHost defines what resources are synced from the host cluster to the virtual cluster
+	FromHost ExternalSecretsSyncFromHostConfig `json:"fromHost,omitempty"`
 	// ExternalSecrets defines if external secrets should get synced from the virtual cluster to the host cluster.
 	ExternalSecrets EnableSwitch `json:"externalSecrets,omitempty"`
 	// Stores defines if secret stores should get synced from the virtual cluster to the host cluster and then bi-directionally.
+	// Deprecated: Use Integrations.ExternalSecrets.Sync.ToHost.Stores instead.
 	Stores EnableSwitch `json:"stores,omitempty"`
 	// ClusterStores defines if cluster secrets stores should get synced from the host cluster to the virtual cluster.
+	// Deprecated: Use Integrations.ExternalSecrets.Sync.FromHost.ClusterStores instead.
 	ClusterStores ClusterStoresSyncConfig `json:"clusterStores,omitempty"`
 }
 
@@ -546,6 +558,27 @@ type ClusterStoresSyncConfig struct {
 	EnableSwitch
 	// Selector defines what cluster stores should be synced
 	Selector LabelSelector `json:"selector,omitempty"`
+}
+
+type ExternalSecretsSyncToHostConfig struct {
+	// ExternalSecrets allows to configure if only a subset of ExternalSecrets matching a label selector should get synced from the virtual cluster to the host cluster.
+	ExternalSecrets SelectorConfig `json:"externalSecrets,omitempty"`
+	// Stores defines if secret stores should get synced from the virtual cluster to the host cluster and then bi-directionally.
+	Stores EnableSwitchSelector `json:"stores,omitempty"`
+}
+
+type ExternalSecretsSyncFromHostConfig struct {
+	// ClusterStores defines if cluster secrets stores should get synced from the host cluster to the virtual cluster.
+	ClusterStores EnableSwitchSelector `json:"clusterStores,omitempty"`
+}
+
+type SelectorConfig struct {
+	Selector StandardLabelSelector `json:"selector,omitempty"`
+}
+
+type EnableSwitchSelector struct {
+	SelectorConfig
+	EnableSwitch
 }
 
 type LabelSelector struct {
@@ -832,6 +865,10 @@ func (c *Config) IsProFeatureEnabled() bool {
 	}
 
 	if c.Sync.ToHost.Pods.HybridScheduling.Enabled {
+		return true
+	}
+
+	if c.PrivateNodes.Enabled {
 		return true
 	}
 
@@ -1278,7 +1315,7 @@ type SyncRewriteHosts struct {
 
 type SyncRewriteHostsInitContainer struct {
 	// Image is the image virtual cluster should use to rewrite this FQDN.
-	Image string `json:"image,omitempty"`
+	Image Image `json:"image,omitempty"`
 
 	// Resources are the resources that should be assigned to the init container for each stateful set init container.
 	Resources Resources `json:"resources,omitempty"`
@@ -1572,7 +1609,9 @@ type ControlPlaneStatefulSet struct {
 	Pods LabelsAndAnnotations `json:"pods,omitempty"`
 
 	// Image is the image for the controlPlane statefulSet container
-	Image StatefulSetImage `json:"image,omitempty"`
+	// It defaults to the vCluster pro repository that includes the optional pro modules that are turned off by default.
+	// If you still want to use the pure OSS build, set the repository to 'loft-sh/vcluster-oss'.
+	Image Image `json:"image,omitempty"`
 
 	// ImagePullPolicy is the policy how to pull the image.
 	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
@@ -1670,20 +1709,6 @@ type DistroContainerEnabled struct {
 	ExtraArgs []string `json:"extraArgs,omitempty"`
 }
 
-type StatefulSetImage struct {
-	// Configure the registry of the container image, e.g. my-registry.com or ghcr.io
-	// It defaults to ghcr.io and can be overriding either by using this field or controlPlane.advanced.defaultImageRegistry
-	Registry string `json:"registry,omitempty"`
-
-	// Configure the repository of the container image, e.g. my-repo/my-image.
-	// It defaults to the vCluster pro repository that includes the optional pro modules that are turned off by default.
-	// If you still want to use the pure OSS build, use 'loft-sh/vcluster-oss' instead.
-	Repository string `json:"repository,omitempty"`
-
-	// Tag is the tag of the container image, e.g. latest
-	Tag string `json:"tag,omitempty"`
-}
-
 type Image struct {
 	// Registry is the registry of the container image, e.g. my-registry.com or ghcr.io. This setting can be globally
 	// overridden via the controlPlane.advanced.defaultImageRegistry option. Empty means docker hub.
@@ -1692,8 +1717,25 @@ type Image struct {
 	// Repository is the repository of the container image, e.g. my-repo/my-image
 	Repository string `json:"repository,omitempty"`
 
-	// Tag is the tag of the container image, e.g. latest. If set to the default, it will use the host Kubernetes version.
+	// Tag is the tag of the container image, and is the default version.
 	Tag string `json:"tag,omitempty"`
+}
+
+func (i Image) String() (ref string) {
+	if i.Registry != "" {
+		ref = i.Registry + "/"
+	}
+
+	if i.Registry != "" && i.Repository != "" && !strings.ContainsRune(i.Repository, '/') {
+		ref += "library/"
+	}
+	ref += i.Repository
+
+	if i.Tag != "" {
+		ref += ":" + i.Tag
+	}
+
+	return ref
 }
 
 type ImagePullSecretName struct {
