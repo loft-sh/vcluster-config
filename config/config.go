@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/invopop/jsonschema"
+	yamlv3 "gopkg.in/yaml.v3"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -382,8 +383,9 @@ type AutoUpgrade struct {
 }
 
 type Kubelet struct {
-	// CgroupDriver defines the cgroup driver to use for the kubelet.
-	CgroupDriver string `json:"cgroupDriver,omitempty"`
+	// Config is the config for the kubelet that will be merged into the default kubelet config. More information can be found here:
+	// https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/#kubelet-config-k8s-io-v1beta1-KubeletConfiguration
+	Config map[string]interface{} `json:"config,omitempty"`
 }
 
 type KubeProxy struct {
@@ -410,6 +412,10 @@ type KubeProxy struct {
 
 	// ExtraArgs are additional arguments to pass to the kube-proxy.
 	ExtraArgs []string `json:"extraArgs,omitempty"`
+
+	// Config is the config for the kube-proxy that will be merged into the default kube-proxy config. More information can be found here:
+	// https://kubernetes.io/docs/reference/config-api/kube-proxy-config.v1alpha1/#kubeproxy-config-k8s-io-v1alpha1-KubeProxyConfiguration
+	Config map[string]interface{} `json:"config,omitempty"`
 }
 
 type Konnectivity struct {
@@ -1668,7 +1674,7 @@ type DistroK8s struct {
 	// ControllerManager holds configuration specific to starting the controller manager.
 	ControllerManager DistroContainerEnabled `json:"controllerManager,omitempty"`
 
-	// Scheduler holds configuration specific to starting the scheduler. Enable this via controlPlane.advanced.virtualScheduler.enabled
+	// Scheduler holds configuration specific to starting the scheduler.
 	Scheduler DistroContainerEnabled `json:"scheduler,omitempty"`
 
 	DistroCommon `json:",inline"`
@@ -1721,7 +1727,44 @@ type Image struct {
 	Tag string `json:"tag,omitempty"`
 }
 
-func (i Image) String() (ref string) {
+// UnmarshalJSON makes the schema change from string to Image backwards compatible
+func (i *Image) UnmarshalJSON(data []byte) error {
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		ParseImageRef(str, i)
+		return nil
+	}
+
+	type Alias Image
+	var aux Alias
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*i = Image(aux)
+	return nil
+}
+
+// UnmarshalYAML makes the schema change from string to Image backwards compatible
+func (i *Image) UnmarshalYAML(node *yamlv3.Node) error {
+	if node.Kind == yamlv3.ScalarNode {
+		ParseImageRef(node.Value, i)
+		return nil
+	}
+
+	type Alias Image
+	var aux Alias
+	if err := node.Decode(&aux); err != nil {
+		return err
+	}
+	*i = Image(aux)
+	return nil
+}
+
+func (i *Image) String() (ref string) {
+	if i == nil {
+		return
+	}
+
 	if i.Registry != "" {
 		ref = i.Registry + "/"
 	}
