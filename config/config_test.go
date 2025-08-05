@@ -2,12 +2,12 @@ package config
 
 import (
 	_ "embed"
-	"fmt"
-	"os"
 	"strings"
 	"testing"
 
 	"gotest.tools/assert"
+	"gotest.tools/assert/cmp"
+	"sigs.k8s.io/yaml"
 )
 
 func TestConfig_Diff(t *testing.T) {
@@ -282,40 +282,6 @@ func TestConfig_IsProFeatureEnabled(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "Pro Sync Settings not used",
-			config: &Config{
-				Experimental: Experimental{
-					SyncSettings: ExperimentalSyncSettings{
-						DisableSync:              false,
-						RewriteKubernetesService: false,
-					},
-				},
-			},
-			expected: false,
-		},
-		{
-			name: "Pro Sync Setting disableSync used",
-			config: &Config{
-				Experimental: Experimental{
-					SyncSettings: ExperimentalSyncSettings{
-						DisableSync: true,
-					},
-				},
-			},
-			expected: true,
-		},
-		{
-			name: "Pro Sync Setting rewriteKubernetesService used",
-			config: &Config{
-				Experimental: Experimental{
-					SyncSettings: ExperimentalSyncSettings{
-						RewriteKubernetesService: true,
-					},
-				},
-			},
-			expected: true,
-		},
-		{
 			name: "Isolated Control Plane not used",
 			config: &Config{
 				Experimental: Experimental{
@@ -398,6 +364,21 @@ func TestConfig_IsProFeatureEnabled(t *testing.T) {
 			},
 			expected: true,
 		},
+		{
+			name: "Hybrid scheduling is enabled",
+			config: &Config{
+				Sync: Sync{
+					ToHost: SyncToHost{
+						Pods: SyncPods{
+							HybridScheduling: HybridScheduling{
+								Enabled: true,
+							},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -407,23 +388,128 @@ func TestConfig_IsProFeatureEnabled(t *testing.T) {
 	}
 }
 
-func TestIfDefaultImagesVersionsAreInSync(t *testing.T) {
-	defaultConfig, err := NewDefaultConfig()
-	assert.NilError(t, err)
-	// this will fail when this test is moved or _init-containers.tpl is moved
-	initContainersTplFilePath := "../chart/templates/_init-containers.tpl"
-	tplBytes, err := os.ReadFile(initContainersTplFilePath)
+// We changed sync.toHost.pods.rewriteHosts.initContainer.image from a string to an object in 0.27.0.
+// We parse the previously used config on upgrade, so it must be backwards compatible.
+func TestImage_UnmarshalYAML(t *testing.T) {
+	tests := []struct {
+		name     string
+		yaml     string
+		expected Image
+	}{
+		{
+			name: "image as object",
+			yaml: `registry: registry:5000
+repository: some/repo
+tag: sometag`,
+			expected: Image{
+				Registry:   "registry:5000",
+				Repository: "some/repo",
+				Tag:        "sometag",
+			},
+		},
+		{
+			name: "image as string",
+			yaml: "registry:5000/some/repo:sometag",
+			expected: Image{
+				Registry:   "registry:5000",
+				Repository: "some/repo",
+				Tag:        "sometag",
+			},
+		},
+	}
 
-	assert.NilError(t, err)
-	assert.Equal(t, defaultConfig.ControlPlane.Distro.K8S.ControllerManager.Image.Tag, defaultConfig.ControlPlane.Distro.K8S.APIServer.Image.Tag)
-	assert.Equal(t, defaultConfig.ControlPlane.Distro.K8S.ControllerManager.Image.Tag, defaultConfig.ControlPlane.Distro.K8S.Scheduler.Image.Tag)
-	assert.Equal(t, defaultConfig.ControlPlane.Distro.K8S.APIServer.Image.Tag, defaultConfig.ControlPlane.Distro.K8S.Scheduler.Image.Tag)
-	expectedDefaultTag := fmt.Sprintf("{{- $defaultTag := %q -}}", defaultConfig.ControlPlane.Distro.K8S.ControllerManager.Image.Tag)
-	got := strings.Count(string(tplBytes), expectedDefaultTag)
-	assert.Equal(
-		t, got, 3,
-		fmt.Sprintf("please update $defaultTag in %s so it's equal to the "+
-			".Values.controlPlane.distro.k8s.controllerManager.image.tag",
-			initContainersTplFilePath),
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var actual Image
+			err := yaml.Unmarshal([]byte(tt.yaml), &actual)
+			assert.NilError(t, err)
+			assert.DeepEqual(t, actual, tt.expected)
+		})
+	}
+}
+
+func TestImage_String(t *testing.T) {
+	testCases := []struct {
+		name     string
+		image    Image
+		expected string
+	}{
+		{
+			name: "complete image reference",
+			image: Image{
+				Registry:   "registry.k8s.io",
+				Repository: "coredns/coredns",
+				Tag:        "1.11.3",
+			},
+			expected: "registry.k8s.io/coredns/coredns:1.11.3",
+		},
+		{
+			name: "may omit registry",
+			image: Image{
+				Repository: "coredns/coredns",
+				Tag:        "1.11.3",
+			},
+			expected: "coredns/coredns:1.11.3",
+		},
+		{
+			name: "may omit registry and repo",
+			image: Image{
+				Repository: "alpine",
+				Tag:        "3.20",
+			},
+			expected: "alpine:3.20",
+		},
+		{
+			name: "may omit tag",
+			image: Image{
+				Repository: "alpine",
+			},
+			expected: "alpine",
+		},
+		{
+			name: "omit repo but not registry is library",
+			image: Image{
+				Registry:   "ghcr.io",
+				Repository: "alpine",
+				Tag:        "3.20",
+			},
+			expected: "ghcr.io/library/alpine:3.20",
+		},
+		{
+			name: "registry may have port",
+			image: Image{
+				Registry:   "host.docker.internal:5000",
+				Repository: "coredns/coredns",
+				Tag:        "1.11.3",
+			},
+			expected: "host.docker.internal:5000/coredns/coredns:1.11.3",
+		},
+		{
+			name: "registry with port and omit tag",
+			image: Image{
+				Registry:   "localhost:5000",
+				Repository: "coredns/coredns",
+			},
+			expected: "localhost:5000/coredns/coredns",
+		},
+		{
+			name:     "empty image is nil value",
+			image:    Image{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run("String(): "+tt.name, func(t *testing.T) {
+			if actual := tt.image.String(); actual != tt.expected {
+				t.Errorf("Expected %s, got %s", tt.expected, actual)
+			}
+		})
+
+		t.Run("ParseImageRef(): "+tt.name, func(t *testing.T) {
+			var image Image
+			ParseImageRef(tt.expected, &image)
+			assert.Check(t, cmp.DeepEqual(tt.image, image))
+		})
+	}
 }
