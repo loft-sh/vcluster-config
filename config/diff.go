@@ -5,7 +5,6 @@ import (
 	"errors"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"sigs.k8s.io/yaml"
 )
@@ -166,11 +165,4 @@ func (f *StrBool) MarshalJSON() ([]byte, error) {
 	default:
 		return []byte("\"" + *f + "\""), nil
 	}
-}
-
-func (f *StrBool) Bool() bool {
-	if f == nil {
-		return false
-	}
-	return strings.ToLower(string(*f)) == "true"
 }
