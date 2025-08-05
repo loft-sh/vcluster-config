@@ -2,12 +2,21 @@ package legacyconfig
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/loft-sh/vcluster-config/config"
 	"sigs.k8s.io/yaml"
+)
+
+const (
+	kubeConfigContextFlag                   = "kube-config-context-name"
+	kubeConfigServerFlag                    = "out-kube-config-server"
+	kubeConfigAdditionalSecretNameFlag      = "out-kube-config-secret"
+	kubeConfigAdditionalSecretNamespaceFlag = "out-kube-config-secret-namespace"
 )
 
 func MigrateLegacyConfig(distro, oldValues string) (string, error) {
@@ -21,8 +30,8 @@ func MigrateLegacyConfig(distro, oldValues string) (string, error) {
 	}
 
 	switch distro {
-	case config.K0SDistro, config.K3SDistro:
-		err = migrateK3sAndK0s(distro, oldValues, toConfig)
+	case config.K3SDistro:
+		err = migrateK3s(distro, oldValues, toConfig)
 		if err != nil {
 			return "", fmt.Errorf("migrate legacy %s values: %w", distro, err)
 		}
@@ -50,9 +59,15 @@ func migrateK8sAndEKS(oldValues string, newConfig *config.Config) error {
 	}
 
 	newConfig.ControlPlane.Distro.K8S.Enabled = true
+	if oldConfig.API.Image != "" {
+		if oldConfig.API.ImagePullPolicy != "" {
+			newConfig.ControlPlane.Distro.K8S.ImagePullPolicy = oldConfig.API.ImagePullPolicy
+		}
+		convertImage(oldConfig.API.Image, &newConfig.ControlPlane.Distro.K8S.Image)
+	}
 	convertAPIValues(oldConfig.API, &newConfig.ControlPlane.Distro.K8S.APIServer)
 	convertControllerValues(oldConfig.Controller, &newConfig.ControlPlane.Distro.K8S.ControllerManager)
-	convertSchedulerValues(oldConfig.Scheduler, &newConfig.ControlPlane.Distro.K8S.Scheduler)
+	convertSchedulerValues(oldConfig, &newConfig.ControlPlane.Distro.K8S.Scheduler)
 
 	// convert etcd
 	err = convertEtcd(oldConfig.Etcd, newConfig)
@@ -67,7 +82,7 @@ func migrateK8sAndEKS(oldValues string, newConfig *config.Config) error {
 	applyStorage(oldConfig.Storage, newConfig)
 
 	// syncer config
-	err = convertK8sSyncerConfig(oldConfig.Syncer, newConfig)
+	err = convertK8sSyncerConfig(config.K8SDistro, oldConfig.Syncer, newConfig)
 	if err != nil {
 		return fmt.Errorf("error converting syncer config: %w", err)
 	}
@@ -82,16 +97,16 @@ func migrateK8sAndEKS(oldValues string, newConfig *config.Config) error {
 	}
 
 	// make default storage deployed etcd
-	if !newConfig.ControlPlane.BackingStore.Database.External.Enabled && !newConfig.ControlPlane.BackingStore.Database.Embedded.Enabled && !newConfig.ControlPlane.BackingStore.Etcd.Embedded.Enabled {
+	if !newConfig.ControlPlane.BackingStore.Database.External.Enabled && !newConfig.ControlPlane.BackingStore.Database.Embedded.Enabled && !newConfig.ControlPlane.BackingStore.Etcd.Embedded.Enabled && !newConfig.ControlPlane.BackingStore.Etcd.External.Enabled {
 		newConfig.ControlPlane.BackingStore.Etcd.Deploy.Enabled = true
 	}
 
 	return nil
 }
 
-func migrateK3sAndK0s(distro, oldValues string, newConfig *config.Config) error {
+func migrateK3s(distro, oldValues string, newConfig *config.Config) error {
 	// unmarshal legacy config
-	oldConfig := &LegacyK0sAndK3s{}
+	oldConfig := &LegacyK3s{}
 	err := oldConfig.UnmarshalYAMLStrict([]byte(oldValues))
 	if err != nil {
 		if err := errIfConfigIsAlreadyConverted(oldValues); err != nil {
@@ -100,16 +115,7 @@ func migrateK3sAndK0s(distro, oldValues string, newConfig *config.Config) error 
 		return fmt.Errorf("unmarshal legacy config: %w", err)
 	}
 
-	// distro specific
-	if distro == config.K0SDistro {
-		newConfig.ControlPlane.Distro.K0S.Enabled = true
-
-		// vcluster config
-		err = convertVClusterConfig(oldConfig.VCluster, &newConfig.ControlPlane.Distro.K0S.DistroCommon, &newConfig.ControlPlane.Distro.K0S.DistroContainer, newConfig)
-		if err != nil {
-			return fmt.Errorf("error converting vcluster config: %w", err)
-		}
-	} else if distro == config.K3SDistro {
+	if distro == config.K3SDistro {
 		newConfig.ControlPlane.Distro.K3S.Enabled = true
 		newConfig.ControlPlane.Distro.K3S.Token = oldConfig.K3sToken
 
@@ -130,13 +136,18 @@ func migrateK3sAndK0s(distro, oldValues string, newConfig *config.Config) error 
 	applyStorage(oldConfig.Storage, newConfig)
 
 	// syncer config
-	err = convertSyncerConfig(oldConfig.Syncer, newConfig)
+	err = convertSyncerConfig(config.K3SDistro, oldConfig.Syncer, newConfig)
 	if err != nil {
 		return fmt.Errorf("error converting syncer config: %w", err)
 	}
 
 	// migrate embedded etcd
 	convertEmbeddedEtcd(oldConfig.EmbeddedEtcd, newConfig)
+
+	// migrate scheduler
+	if oldConfig.Sync.Nodes.EnableScheduler != nil {
+		newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = *oldConfig.Sync.Nodes.EnableScheduler
+	}
 
 	// convert the rest
 	return convertBaseValues(oldConfig.BaseHelm, newConfig)
@@ -209,33 +220,18 @@ func convertEtcd(oldConfig EtcdValues, newConfig *config.Config) error {
 }
 
 func convertAPIValues(oldConfig APIServerValues, newContainer *config.DistroContainerEnabled) {
-	if oldConfig.ImagePullPolicy != "" {
-		newContainer.ImagePullPolicy = oldConfig.ImagePullPolicy
-	}
-	if oldConfig.Image != "" {
-		convertImage(oldConfig.Image, &newContainer.Image)
-	}
 	newContainer.ExtraArgs = oldConfig.ExtraArgs
 }
 
 func convertControllerValues(oldConfig ControllerValues, newContainer *config.DistroContainerEnabled) {
-	if oldConfig.ImagePullPolicy != "" {
-		newContainer.ImagePullPolicy = oldConfig.ImagePullPolicy
-	}
-	if oldConfig.Image != "" {
-		convertImage(oldConfig.Image, &newContainer.Image)
-	}
 	newContainer.ExtraArgs = oldConfig.ExtraArgs
 }
 
-func convertSchedulerValues(oldConfig SchedulerValues, newContainer *config.DistroContainer) {
-	if oldConfig.ImagePullPolicy != "" {
-		newContainer.ImagePullPolicy = oldConfig.ImagePullPolicy
+func convertSchedulerValues(oldConfig *LegacyK8s, newContainer *config.DistroContainerEnabled) {
+	if oldConfig.Sync.Nodes.EnableScheduler != nil {
+		newContainer.Enabled = *oldConfig.Sync.Nodes.EnableScheduler
 	}
-	if oldConfig.Image != "" {
-		convertImage(oldConfig.Image, &newContainer.Image)
-	}
-	newContainer.ExtraArgs = oldConfig.ExtraArgs
+	newContainer.ExtraArgs = oldConfig.Scheduler.ExtraArgs
 }
 
 func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
@@ -321,7 +317,7 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 	}
 
 	if oldConfig.MultiNamespaceMode.Enabled != nil {
-		newConfig.Experimental.MultiNamespaceMode.Enabled = *oldConfig.MultiNamespaceMode.Enabled
+		newConfig.Sync.ToHost.Namespaces.Enabled = *oldConfig.MultiNamespaceMode.Enabled
 	}
 
 	if len(oldConfig.SecurityContext) > 0 {
@@ -366,26 +362,6 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 	}
 	if oldConfig.Rbac.ClusterRole.Create != nil && *oldConfig.Rbac.ClusterRole.Create {
 		newConfig.RBAC.ClusterRole.Enabled = "true"
-	}
-
-	if oldConfig.NoopSyncer.Enabled {
-		newConfig.Experimental.SyncSettings.DisableSync = true
-		if oldConfig.NoopSyncer.Secret.KubeConfig != "" {
-			newConfig.Experimental.VirtualClusterKubeConfig.KubeConfig = oldConfig.NoopSyncer.Secret.KubeConfig
-		}
-		if oldConfig.NoopSyncer.Secret.ClientCaCert != "" {
-			newConfig.Experimental.VirtualClusterKubeConfig.ClientCACert = oldConfig.NoopSyncer.Secret.ClientCaCert
-		}
-		if oldConfig.NoopSyncer.Secret.ServerCaKey != "" {
-			newConfig.Experimental.VirtualClusterKubeConfig.ServerCAKey = oldConfig.NoopSyncer.Secret.ServerCaKey
-		}
-		if oldConfig.NoopSyncer.Secret.ServerCaCert != "" {
-			newConfig.Experimental.VirtualClusterKubeConfig.ServerCACert = oldConfig.NoopSyncer.Secret.ServerCaCert
-		}
-		if oldConfig.NoopSyncer.Secret.RequestHeaderCaCert != "" {
-			newConfig.Experimental.VirtualClusterKubeConfig.RequestHeaderCACert = oldConfig.NoopSyncer.Secret.RequestHeaderCaCert
-		}
-		newConfig.Experimental.SyncSettings.RewriteKubernetesService = oldConfig.NoopSyncer.Synck8sService
 	}
 
 	newConfig.Experimental.Deploy.VCluster.Manifests = oldConfig.Init.Manifests
@@ -607,9 +583,6 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 	if oldConfig.Sync.Nodes.NodeSelector != "" {
 		newConfig.Sync.FromHost.Nodes.Selector.Labels = mergeIntoMap(make(map[string]string), strings.Split(oldConfig.Sync.Nodes.NodeSelector, ","))
 	}
-	if oldConfig.Sync.Nodes.EnableScheduler != nil {
-		newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = *oldConfig.Sync.Nodes.EnableScheduler
-	}
 	if oldConfig.Sync.Nodes.SyncNodeChanges != nil {
 		newConfig.Sync.FromHost.Nodes.SyncBackChanges = *oldConfig.Sync.Nodes.SyncNodeChanges
 	}
@@ -663,6 +636,7 @@ func convertEmbeddedEtcd(oldConfig EmbeddedEtcdValues, newConfig *config.Config)
 	if oldConfig.Enabled {
 		newConfig.ControlPlane.BackingStore.Etcd.Embedded.Enabled = true
 		newConfig.ControlPlane.BackingStore.Etcd.Deploy.Enabled = false
+		newConfig.ControlPlane.BackingStore.Etcd.External.Enabled = false
 		newConfig.ControlPlane.BackingStore.Database.Embedded.Enabled = false
 		newConfig.ControlPlane.BackingStore.Database.External.Enabled = false
 	}
@@ -671,7 +645,7 @@ func convertEmbeddedEtcd(oldConfig EmbeddedEtcdValues, newConfig *config.Config)
 	}
 }
 
-func convertK8sSyncerConfig(oldConfig K8sSyncerValues, newConfig *config.Config) error {
+func convertK8sSyncerConfig(distro string, oldConfig K8sSyncerValues, newConfig *config.Config) error {
 	newConfig.ControlPlane.StatefulSet.Persistence.AddVolumes = oldConfig.Volumes
 	if oldConfig.PriorityClassName != "" {
 		newConfig.ControlPlane.StatefulSet.Scheduling.PriorityClassName = oldConfig.PriorityClassName
@@ -690,10 +664,10 @@ func convertK8sSyncerConfig(oldConfig K8sSyncerValues, newConfig *config.Config)
 		newConfig.ControlPlane.StatefulSet.Security.ContainerSecurityContext = oldConfig.SecurityContext
 	}
 
-	return convertSyncerConfig(oldConfig.SyncerValues, newConfig)
+	return convertSyncerConfig(distro, oldConfig.SyncerValues, newConfig)
 }
 
-func convertSyncerConfig(oldConfig SyncerValues, newConfig *config.Config) error {
+func convertSyncerConfig(distro string, oldConfig SyncerValues, newConfig *config.Config) error {
 	convertStatefulSetImage(oldConfig.Image, &newConfig.ControlPlane.StatefulSet.Image)
 	if oldConfig.ImagePullPolicy != "" {
 		newConfig.ControlPlane.StatefulSet.ImagePullPolicy = oldConfig.ImagePullPolicy
@@ -736,12 +710,20 @@ func convertSyncerConfig(oldConfig SyncerValues, newConfig *config.Config) error
 		newConfig.ControlPlane.StatefulSet.Labels = oldConfig.Labels
 	}
 
-	return convertSyncerExtraArgs(oldConfig.ExtraArgs, newConfig)
+	return convertSyncerExtraArgs(distro, oldConfig.ExtraArgs, newConfig)
 }
 
-func convertSyncerExtraArgs(extraArgs []string, newConfig *config.Config) error {
+func convertSyncerExtraArgs(distro string, extraArgs []string, newConfig *config.Config) error {
 	var err error
 	var flag, value string
+
+	allExportKubeConfigFlags := []string{
+		kubeConfigContextFlag,
+		kubeConfigServerFlag,
+		kubeConfigAdditionalSecretNameFlag,
+		kubeConfigAdditionalSecretNamespaceFlag,
+	}
+	usedExportKubeConfigFlags := map[string]string{}
 
 	for {
 		flag, value, extraArgs, err = nextFlagValue(extraArgs)
@@ -751,16 +733,33 @@ func convertSyncerExtraArgs(extraArgs []string, newConfig *config.Config) error 
 			break
 		}
 
-		err = migrateFlag(flag, value, newConfig)
+		// We save all flags related to exporting kubeconfig, as we have to check them together, in order to correctly
+		// set the new exportKubeConfig config.
+		if slices.Contains(allExportKubeConfigFlags, flag) {
+			usedExportKubeConfigFlags[flag] = value
+			continue
+		}
+
+		err = migrateFlag(distro, flag, value, newConfig)
 		if err != nil {
 			return fmt.Errorf("migrate extra syncer flag --%s: %w", flag, err)
 		}
 	}
 
+	// Migrate all flags that are related to exporting kubeconfig.
+	err = migrateExportKubeConfigFlags(usedExportKubeConfigFlags, &newConfig.ExportKubeConfig)
+	if err != nil {
+		return fmt.Errorf("failed to migrate flags used for exporting kubeconfig: %w", err)
+	}
+
 	return nil
 }
 
-func migrateFlag(key, value string, newConfig *config.Config) error {
+func migrateFlag(distro, key, value string, newConfig *config.Config) error {
+	if newConfig == nil {
+		return errors.New("newConfig is not set")
+	}
+
 	switch key {
 	case "pro-license-secret":
 		return fmt.Errorf("cannot be used directly, use proLicenseSecret value")
@@ -798,11 +797,6 @@ func migrateFlag(key, value string, newConfig *config.Config) error {
 		return fmt.Errorf("cannot be used directly")
 	case "enforce-mutating-hook":
 		return fmt.Errorf("cannot be used directly")
-	case "kube-config-context-name":
-		if value == "" {
-			return fmt.Errorf("value is missing")
-		}
-		newConfig.ExportKubeConfig.Context = value
 	case "sync":
 		return fmt.Errorf("cannot be used directly, use the sync.*.enabled options instead")
 	case "request-header-ca-cert":
@@ -836,24 +830,6 @@ func migrateFlag(key, value string, newConfig *config.Config) error {
 		}
 
 		newConfig.ControlPlane.Proxy.ExtraSANs = append(newConfig.ControlPlane.Proxy.ExtraSANs, strings.Split(value, ",")...)
-	case "out-kube-config-secret":
-		if value == "" {
-			return fmt.Errorf("value is missing")
-		}
-
-		newConfig.ExportKubeConfig.Secret.Name = value
-	case "out-kube-config-secret-namespace":
-		if value == "" {
-			return fmt.Errorf("value is missing")
-		}
-
-		newConfig.ExportKubeConfig.Secret.Namespace = value
-	case "out-kube-config-server":
-		if value == "" {
-			return fmt.Errorf("value is missing")
-		}
-
-		newConfig.ExportKubeConfig.Server = value
 	case "target-namespace":
 		if value == "" {
 			return fmt.Errorf("value is missing")
@@ -884,8 +860,13 @@ func migrateFlag(key, value string, newConfig *config.Config) error {
 		}
 	case "enable-scheduler":
 		if value == "" || value == "true" {
-			newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = true
+			if distro == config.K8SDistro {
+				newConfig.ControlPlane.Distro.K8S.Scheduler.Enabled = true
+			} else if distro == config.K3SDistro {
+				newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = true
+			}
 		} else if value == "false" {
+			newConfig.ControlPlane.Distro.K8S.Scheduler.Enabled = false
 			newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = false
 		}
 	case "disable-fake-kubelets":
@@ -1012,13 +993,13 @@ func migrateFlag(key, value string, newConfig *config.Config) error {
 		}
 	case "multi-namespace-mode":
 		if value == "" || value == "true" {
-			newConfig.Experimental.MultiNamespaceMode.Enabled = true
+			newConfig.Sync.ToHost.Namespaces.Enabled = true
 		}
 	case "namespace-labels":
 		if value == "" {
 			return fmt.Errorf("value is missing")
 		}
-		newConfig.Experimental.MultiNamespaceMode.NamespaceLabels = mergeIntoMap(newConfig.Experimental.MultiNamespaceMode.NamespaceLabels, strings.Split(value, ","))
+		newConfig.Sync.ToHost.Namespaces.ExtraLabels = mergeIntoMap(newConfig.Sync.ToHost.Namespaces.ExtraLabels, strings.Split(value, ","))
 	case "sync-all-configmaps":
 		if value == "" || value == "true" {
 			newConfig.Sync.ToHost.ConfigMaps.All = true
@@ -1048,6 +1029,69 @@ func migrateFlag(key, value string, newConfig *config.Config) error {
 	return nil
 }
 
+// migrateExportKubeConfigFlags migrates 'kube-config-context-name', 'out-kube-config-server', 'out-kube-config-secret'
+// and 'out-kube-config-secret-namespace' flags.
+//
+// The migration is done in the following way:
+//   - 'kube-config-context-name' and 'out-kube-config-server', if set, are always migrated into ExportKubeConfig.Context
+//     and ExportKubeConfig.Server config properties, respectively.
+//   - 'out-kube-config-secret' and 'out-kube-config-secret-namespace', if set, are migrated as the first additional
+//     secret in the new ExportKubeConfig.AdditionalSecrets config. When this first additional kubeconfig secret config
+//     is created, it also gets Context and Server properties from 'kube-config-context-name' and 'out-kube-config-server'.
+//     This is done in order to preserve the previous behavior where the additional kubeconfig Secret, specified in
+//     ExportKubeConfig.Secret, used context and server values from ExportKubeConfig.Context and ExportKubeConfig.Server.
+func migrateExportKubeConfigFlags(exportKubeConfigFlags map[string]string, exportKubeConfig *config.ExportKubeConfig) error {
+	if exportKubeConfig == nil {
+		return errors.New("exportKubeConfig is not set")
+	}
+
+	ensureAdditionalSecretIsSet := func() {
+		if len(exportKubeConfig.AdditionalSecrets) == 0 {
+			exportKubeConfig.AdditionalSecrets = []config.ExportKubeConfigAdditionalSecretReference{{}}
+		}
+	}
+
+	// We will set the additional secret only if the additional secret name and/or namespace flags are set.
+	var setAdditionalSecret bool
+	if secretName, ok := exportKubeConfigFlags[kubeConfigAdditionalSecretNameFlag]; ok {
+		if secretName == "" {
+			return fmt.Errorf("%s flag value is missing", kubeConfigAdditionalSecretNameFlag)
+		}
+		ensureAdditionalSecretIsSet()
+		exportKubeConfig.AdditionalSecrets[0].Name = secretName
+		setAdditionalSecret = true
+	}
+	if secretNamespace, ok := exportKubeConfigFlags[kubeConfigAdditionalSecretNamespaceFlag]; ok {
+		if secretNamespace == "" {
+			return fmt.Errorf("%s flag value is missing", kubeConfigAdditionalSecretNamespaceFlag)
+		}
+		ensureAdditionalSecretIsSet()
+		exportKubeConfig.AdditionalSecrets[0].Namespace = secretNamespace
+		setAdditionalSecret = true
+	}
+
+	if context, ok := exportKubeConfigFlags[kubeConfigContextFlag]; ok {
+		if context == "" {
+			return fmt.Errorf("%s flag value is missing", kubeConfigContextFlag)
+		}
+		exportKubeConfig.Context = context
+		if setAdditionalSecret {
+			exportKubeConfig.AdditionalSecrets[0].Context = context
+		}
+	}
+	if server, ok := exportKubeConfigFlags[kubeConfigServerFlag]; ok {
+		if server == "" {
+			return fmt.Errorf("%s flag value is missing", kubeConfigServerFlag)
+		}
+		exportKubeConfig.Server = server
+		if setAdditionalSecret {
+			exportKubeConfig.AdditionalSecrets[0].Server = server
+		}
+	}
+
+	return nil
+}
+
 func applyStorage(oldConfig Storage, newConfig *config.Config) {
 	if oldConfig.Persistence != nil {
 		newConfig.ControlPlane.StatefulSet.Persistence.VolumeClaim.Enabled = config.StrBool(strconv.FormatBool(*oldConfig.Persistence))
@@ -1065,13 +1109,13 @@ func applyStorage(oldConfig Storage, newConfig *config.Config) {
 
 func convertVClusterConfig(oldConfig VClusterValues, retDistroCommon *config.DistroCommon, retDistroContainer *config.DistroContainer, newConfig *config.Config) error {
 	retDistroCommon.Env = oldConfig.Env
-	convertImage(oldConfig.Image, &retDistroContainer.Image)
+	convertImage(oldConfig.Image, &retDistroCommon.Image)
 	if len(oldConfig.Resources) > 0 {
 		retDistroCommon.Resources = mergeMaps(retDistroCommon.Resources, oldConfig.Resources)
 	}
 	retDistroContainer.ExtraArgs = append(retDistroContainer.ExtraArgs, oldConfig.ExtraArgs...)
 	if oldConfig.ImagePullPolicy != "" {
-		retDistroContainer.ImagePullPolicy = oldConfig.ImagePullPolicy
+		retDistroCommon.ImagePullPolicy = oldConfig.ImagePullPolicy
 	}
 
 	if len(oldConfig.BaseArgs) > 0 {
