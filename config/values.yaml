@@ -432,7 +432,6 @@ controlPlane:
 
 privateNodes:
   enabled: false
-  importNodeBinaries: true
   kubelet:
     config: {}
   autoUpgrade:
@@ -441,13 +440,7 @@ privateNodes:
   joinNode:
     containerd:
       enabled: true
-  nodePools:
-    static: []
-    dynamic: []
-  tunnel:
-    enabled: false
-    nodeToNode:
-      enabled: false
+
 deploy:
   localPathProvisioner:
     enabled: true
