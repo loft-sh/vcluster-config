@@ -63,6 +63,10 @@
           "type": "object",
           "description": "NodeSelector is the node selector for the auto upgrade. If empty will select all worker nodes."
         },
+        "bundleRepository": {
+          "type": "string",
+          "description": "BundleRepository is the repository to use for downloading the Kubernetes bundle. Defaults to https://github.com/loft-sh/kubernetes/releases/download"
+        },
         "binariesPath": {
           "type": "string",
           "description": "BinariesPath is the base path for the kubeadm binaries. Defaults to /usr/local/bin"
@@ -243,6 +247,13 @@
         "registry": {
           "$ref": "#/$defs/ContainerdRegistry",
           "description": "Registry holds configuration for how containerd should be configured to use a registries."
+        },
+        "importImages": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "ImportImages is a list of images to import into the containerd registry from local files. If the path is a folder, all files that end with .tar or .tar.gz in the folder will be imported."
         },
         "pauseImage": {
           "type": "string",
@@ -768,8 +779,8 @@
           "description": "Additional labels or annotations for the statefulSet pods."
         },
         "image": {
-          "$ref": "#/$defs/Image",
-          "description": "Image is the image for the controlPlane statefulSet container\nIt defaults to the vCluster pro repository that includes the optional pro modules that are turned off by default.\nIf you still want to use the pure OSS build, set the repository to 'loft-sh/vcluster-oss'."
+          "$ref": "#/$defs/StatefulSetImage",
+          "description": "Image is the image for the controlPlane statefulSet container"
         },
         "imagePullPolicy": {
           "type": "string",
@@ -1196,7 +1207,7 @@
         },
         "scheduler": {
           "$ref": "#/$defs/DistroContainerEnabled",
-          "description": "Scheduler holds configuration specific to starting the scheduler."
+          "description": "Scheduler holds configuration specific to starting the scheduler. Enable this via controlPlane.advanced.virtualScheduler.enabled"
         },
         "image": {
           "$ref": "#/$defs/Image",
@@ -1279,19 +1290,6 @@
     },
     "EnableSwitch": {
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enabled defines if this option should be enabled."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "EnableSwitchSelector": {
-      "properties": {
-        "selector": {
-          "$ref": "#/$defs/StandardLabelSelector"
-        },
         "enabled": {
           "type": "boolean",
           "description": "Enabled defines if this option should be enabled."
@@ -2083,49 +2081,17 @@
     },
     "ExternalSecretsSync": {
       "properties": {
-        "toHost": {
-          "$ref": "#/$defs/ExternalSecretsSyncToHostConfig",
-          "description": "ToHost defines what resources are synced from the virtual cluster to the host"
-        },
-        "fromHost": {
-          "$ref": "#/$defs/ExternalSecretsSyncFromHostConfig",
-          "description": "FromHost defines what resources are synced from the host cluster to the virtual cluster"
-        },
         "externalSecrets": {
           "$ref": "#/$defs/EnableSwitch",
           "description": "ExternalSecrets defines if external secrets should get synced from the virtual cluster to the host cluster."
         },
         "stores": {
           "$ref": "#/$defs/EnableSwitch",
-          "description": "Stores defines if secret stores should get synced from the virtual cluster to the host cluster and then bi-directionally.\nDeprecated: Use Integrations.ExternalSecrets.Sync.ToHost.Stores instead."
+          "description": "Stores defines if secret stores should get synced from the virtual cluster to the host cluster and then bi-directionally."
         },
         "clusterStores": {
           "$ref": "#/$defs/ClusterStoresSyncConfig",
-          "description": "ClusterStores defines if cluster secrets stores should get synced from the host cluster to the virtual cluster.\nDeprecated: Use Integrations.ExternalSecrets.Sync.FromHost.ClusterStores instead."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "ExternalSecretsSyncFromHostConfig": {
-      "properties": {
-        "clusterStores": {
-          "$ref": "#/$defs/EnableSwitchSelector",
           "description": "ClusterStores defines if cluster secrets stores should get synced from the host cluster to the virtual cluster."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "ExternalSecretsSyncToHostConfig": {
-      "properties": {
-        "externalSecrets": {
-          "$ref": "#/$defs/SelectorConfig",
-          "description": "ExternalSecrets allows to configure if only a subset of ExternalSecrets matching a label selector should get synced from the virtual cluster to the host cluster."
-        },
-        "stores": {
-          "$ref": "#/$defs/EnableSwitchSelector",
-          "description": "Stores defines if secret stores should get synced from the virtual cluster to the host cluster and then bi-directionally."
         }
       },
       "additionalProperties": false,
@@ -2252,7 +2218,7 @@
         },
         "tag": {
           "type": "string",
-          "description": "Tag is the tag of the container image, and is the default version."
+          "description": "Tag is the tag of the container image, e.g. latest. If set to the default, it will use the host Kubernetes version."
         }
       },
       "additionalProperties": false,
@@ -2383,26 +2349,19 @@
     },
     "JoinConfiguration": {
       "properties": {
-        "preInstallCommands": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "description": "PreInstallCommands are commands that will be executed before containerd, kubelet etc. is installed."
-        },
         "preJoinCommands": {
           "items": {
             "type": "string"
           },
           "type": "array",
-          "description": "PreJoinCommands are commands that will be executed before kubeadm join is executed."
+          "description": "PreJoinCommands are commands that will be executed before the join process starts."
         },
         "postJoinCommands": {
           "items": {
             "type": "string"
           },
           "type": "array",
-          "description": "PostJoinCommands are commands that will be executed after kubeadm join is executed."
+          "description": "PostJoinCommands are commands that will be executed after the join process starts."
         },
         "containerd": {
           "$ref": "#/$defs/ContainerdJoin",
@@ -2549,10 +2508,6 @@
           },
           "type": "array",
           "description": "ExtraArgs are additional arguments to pass to the kube-proxy."
-        },
-        "config": {
-          "type": "object",
-          "description": "Config is the config for the kube-proxy that will be merged into the default kube-proxy config. More information can be found here:\nhttps://kubernetes.io/docs/reference/config-api/kube-proxy-config.v1alpha1/#kubeproxy-config-k8s-io-v1alpha1-KubeProxyConfiguration"
         }
       },
       "additionalProperties": false,
@@ -2614,9 +2569,9 @@
     },
     "Kubelet": {
       "properties": {
-        "config": {
-          "type": "object",
-          "description": "Config is the config for the kubelet that will be merged into the default kubelet config. More information can be found here:\nhttps://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/#kubelet-config-k8s-io-v1beta1-KubeletConfiguration"
+        "cgroupDriver": {
+          "type": "string",
+          "description": "CgroupDriver defines the cgroup driver to use for the kubelet."
         }
       },
       "additionalProperties": false,
@@ -3494,6 +3449,10 @@
           "type": "boolean",
           "description": "Enabled defines if dedicated nodes should be enabled."
         },
+        "importNodeBinaries": {
+          "type": "boolean",
+          "description": "ImportNodeBinaries defines to use the loft-sh/kubernetes:VERSION-full image to also copy the node binaries to the control plane. This allows upgrades and\njoining new nodes into the cluster without having to download the binaries from the internet."
+        },
         "kubelet": {
           "$ref": "#/$defs/Kubelet",
           "description": "Kubelet holds kubelet configuration that is used for all nodes."
@@ -3840,15 +3799,6 @@
       "additionalProperties": false,
       "type": "object"
     },
-    "SelectorConfig": {
-      "properties": {
-        "selector": {
-          "$ref": "#/$defs/StandardLabelSelector"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
     "ServiceMapping": {
       "properties": {
         "from": {
@@ -3935,10 +3885,6 @@
           "type": "boolean",
           "description": "Enabled defines if standalone mode should be enabled."
         },
-        "syncConfig": {
-          "$ref": "#/$defs/StandaloneSyncConfig",
-          "description": "SyncConfig allows controlling the vCluster config through a secret \"vcluster-config\" in the namespace \"kube-system\". vCluster will watch for changes in this secret and\nupdate the local config accordingly and restart vCluster if needed."
-        },
         "dataDir": {
           "type": "string",
           "description": "DataDir defines the data directory for the standalone mode."
@@ -3965,26 +3911,23 @@
           "type": "boolean",
           "description": "Enabled defines if the standalone node should be joined into the cluster. If false, only the control plane binaries will be executed and no node will show up in the actual cluster."
         },
-        "preInstallCommands": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "description": "PreInstallCommands are commands that will be executed before containerd, kubelet etc. is installed."
+        "name": {
+          "type": "string",
+          "description": "Name defines the name of the standalone node. If empty the node will get the hostname as name."
         },
         "preJoinCommands": {
           "items": {
             "type": "string"
           },
           "type": "array",
-          "description": "PreJoinCommands are commands that will be executed before kubeadm join is executed."
+          "description": "PreJoinCommands are commands that will be executed before the join process starts."
         },
         "postJoinCommands": {
           "items": {
             "type": "string"
           },
           "type": "array",
-          "description": "PostJoinCommands are commands that will be executed after kubeadm join is executed."
+          "description": "PostJoinCommands are commands that will be executed after the join process starts."
         },
         "containerd": {
           "$ref": "#/$defs/ContainerdJoin",
@@ -4004,16 +3947,6 @@
         "nodeRegistration": {
           "$ref": "#/$defs/NodeRegistration",
           "description": "NodeRegistration holds configuration for the node registration similar to the kubeadm node registration."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "StandaloneSyncConfig": {
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enabled defines if config syncing should be enabled."
         }
       },
       "additionalProperties": false,
@@ -4059,6 +3992,24 @@
       "additionalProperties": false,
       "type": "object",
       "description": "StartupProbe defines the configuration for the startup probe."
+    },
+    "StatefulSetImage": {
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Configure the registry of the container image, e.g. my-registry.com or ghcr.io\nIt defaults to ghcr.io and can be overriding either by using this field or controlPlane.advanced.defaultImageRegistry"
+        },
+        "repository": {
+          "type": "string",
+          "description": "Configure the repository of the container image, e.g. my-repo/my-image.\nIt defaults to the vCluster pro repository that includes the optional pro modules that are turned off by default.\nIf you still want to use the pure OSS build, use 'loft-sh/vcluster-oss' instead."
+        },
+        "tag": {
+          "type": "string",
+          "description": "Tag is the tag of the container image, e.g. latest"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "Sync": {
       "properties": {
@@ -4299,7 +4250,7 @@
     "SyncRewriteHostsInitContainer": {
       "properties": {
         "image": {
-          "$ref": "#/$defs/Image",
+          "type": "string",
           "description": "Image is the image virtual cluster should use to rewrite this FQDN."
         },
         "resources": {

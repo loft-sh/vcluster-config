@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/invopop/jsonschema"
-	yamlv3 "gopkg.in/yaml.v3"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -101,6 +100,10 @@ type PrivateNodes struct {
 	// Enabled defines if dedicated nodes should be enabled.
 	Enabled bool `json:"enabled,omitempty"`
 
+	// ImportNodeBinaries defines to use the loft-sh/kubernetes:VERSION-full image to also copy the node binaries to the control plane. This allows upgrades and
+	// joining new nodes into the cluster without having to download the binaries from the internet.
+	ImportNodeBinaries bool `json:"importNodeBinaries,omitempty"`
+
 	// Kubelet holds kubelet configuration that is used for all nodes.
 	Kubelet Kubelet `json:"kubelet,omitempty"`
 
@@ -170,10 +173,6 @@ type Standalone struct {
 	// Enabled defines if standalone mode should be enabled.
 	Enabled bool `json:"enabled,omitempty"`
 
-	// SyncConfig allows controlling the vCluster config through a secret "vcluster-config" in the namespace "kube-system". vCluster will watch for changes in this secret and
-	// update the local config accordingly and restart vCluster if needed.
-	SyncConfig StandaloneSyncConfig `json:"syncConfig,omitempty"`
-
 	// DataDir defines the data directory for the standalone mode.
 	DataDir string `json:"dataDir,omitempty"`
 
@@ -187,26 +186,21 @@ type Standalone struct {
 	JoinNode StandaloneJoinNode `json:"joinNode,omitempty"`
 }
 
-type StandaloneSyncConfig struct {
-	// Enabled defines if config syncing should be enabled.
-	Enabled bool `json:"enabled,omitempty"`
-}
-
 type StandaloneJoinNode struct {
 	// Enabled defines if the standalone node should be joined into the cluster. If false, only the control plane binaries will be executed and no node will show up in the actual cluster.
 	Enabled bool `json:"enabled,omitempty"`
+
+	// Name defines the name of the standalone node. If empty the node will get the hostname as name.
+	Name string `json:"name,omitempty"`
 
 	JoinConfiguration `json:",inline"`
 }
 
 type JoinConfiguration struct {
-	// PreInstallCommands are commands that will be executed before containerd, kubelet etc. is installed.
-	PreInstallCommands []string `json:"preInstallCommands,omitempty"`
-
-	// PreJoinCommands are commands that will be executed before kubeadm join is executed.
+	// PreJoinCommands are commands that will be executed before the join process starts.
 	PreJoinCommands []string `json:"preJoinCommands,omitempty"`
 
-	// PostJoinCommands are commands that will be executed after kubeadm join is executed.
+	// PostJoinCommands are commands that will be executed after the join process starts.
 	PostJoinCommands []string `json:"postJoinCommands,omitempty"`
 
 	// Containerd holds configuration for the containerd join process.
@@ -231,6 +225,9 @@ type ContainerdJoin struct {
 
 	// Registry holds configuration for how containerd should be configured to use a registries.
 	Registry ContainerdRegistry `json:"registry,omitempty"`
+
+	// ImportImages is a list of images to import into the containerd registry from local files. If the path is a folder, all files that end with .tar or .tar.gz in the folder will be imported.
+	ImportImages []string `json:"importImages,omitempty"`
 
 	// PauseImage is the image for the pause container.
 	PauseImage string `json:"pauseImage,omitempty"`
@@ -365,6 +362,9 @@ type AutoUpgrade struct {
 	// NodeSelector is the node selector for the auto upgrade. If empty will select all worker nodes.
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
+	// BundleRepository is the repository to use for downloading the Kubernetes bundle. Defaults to https://github.com/loft-sh/kubernetes/releases/download
+	BundleRepository string `json:"bundleRepository,omitempty"`
+
 	// BinariesPath is the base path for the kubeadm binaries. Defaults to /usr/local/bin
 	BinariesPath string `json:"binariesPath,omitempty"`
 
@@ -376,9 +376,8 @@ type AutoUpgrade struct {
 }
 
 type Kubelet struct {
-	// Config is the config for the kubelet that will be merged into the default kubelet config. More information can be found here:
-	// https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/#kubelet-config-k8s-io-v1beta1-KubeletConfiguration
-	Config map[string]interface{} `json:"config,omitempty"`
+	// CgroupDriver defines the cgroup driver to use for the kubelet.
+	CgroupDriver string `json:"cgroupDriver,omitempty"`
 }
 
 type KubeProxy struct {
@@ -405,10 +404,6 @@ type KubeProxy struct {
 
 	// ExtraArgs are additional arguments to pass to the kube-proxy.
 	ExtraArgs []string `json:"extraArgs,omitempty"`
-
-	// Config is the config for the kube-proxy that will be merged into the default kube-proxy config. More information can be found here:
-	// https://kubernetes.io/docs/reference/config-api/kube-proxy-config.v1alpha1/#kubeproxy-config-k8s-io-v1alpha1-KubeProxyConfiguration
-	Config map[string]interface{} `json:"config,omitempty"`
 }
 
 type Konnectivity struct {
@@ -539,17 +534,11 @@ type ExternalSecrets struct {
 }
 
 type ExternalSecretsSync struct {
-	// ToHost defines what resources are synced from the virtual cluster to the host
-	ToHost ExternalSecretsSyncToHostConfig `json:"toHost,omitempty"`
-	// FromHost defines what resources are synced from the host cluster to the virtual cluster
-	FromHost ExternalSecretsSyncFromHostConfig `json:"fromHost,omitempty"`
 	// ExternalSecrets defines if external secrets should get synced from the virtual cluster to the host cluster.
 	ExternalSecrets EnableSwitch `json:"externalSecrets,omitempty"`
 	// Stores defines if secret stores should get synced from the virtual cluster to the host cluster and then bi-directionally.
-	// Deprecated: Use Integrations.ExternalSecrets.Sync.ToHost.Stores instead.
 	Stores EnableSwitch `json:"stores,omitempty"`
 	// ClusterStores defines if cluster secrets stores should get synced from the host cluster to the virtual cluster.
-	// Deprecated: Use Integrations.ExternalSecrets.Sync.FromHost.ClusterStores instead.
 	ClusterStores ClusterStoresSyncConfig `json:"clusterStores,omitempty"`
 }
 
@@ -557,27 +546,6 @@ type ClusterStoresSyncConfig struct {
 	EnableSwitch
 	// Selector defines what cluster stores should be synced
 	Selector LabelSelector `json:"selector,omitempty"`
-}
-
-type ExternalSecretsSyncToHostConfig struct {
-	// ExternalSecrets allows to configure if only a subset of ExternalSecrets matching a label selector should get synced from the virtual cluster to the host cluster.
-	ExternalSecrets SelectorConfig `json:"externalSecrets,omitempty"`
-	// Stores defines if secret stores should get synced from the virtual cluster to the host cluster and then bi-directionally.
-	Stores EnableSwitchSelector `json:"stores,omitempty"`
-}
-
-type ExternalSecretsSyncFromHostConfig struct {
-	// ClusterStores defines if cluster secrets stores should get synced from the host cluster to the virtual cluster.
-	ClusterStores EnableSwitchSelector `json:"clusterStores,omitempty"`
-}
-
-type SelectorConfig struct {
-	Selector StandardLabelSelector `json:"selector,omitempty"`
-}
-
-type EnableSwitchSelector struct {
-	SelectorConfig
-	EnableSwitch
 }
 
 type LabelSelector struct {
@@ -864,10 +832,6 @@ func (c *Config) IsProFeatureEnabled() bool {
 	}
 
 	if c.Sync.ToHost.Pods.HybridScheduling.Enabled {
-		return true
-	}
-
-	if c.PrivateNodes.Enabled {
 		return true
 	}
 
@@ -1314,7 +1278,7 @@ type SyncRewriteHosts struct {
 
 type SyncRewriteHostsInitContainer struct {
 	// Image is the image virtual cluster should use to rewrite this FQDN.
-	Image Image `json:"image,omitempty"`
+	Image string `json:"image,omitempty"`
 
 	// Resources are the resources that should be assigned to the init container for each stateful set init container.
 	Resources Resources `json:"resources,omitempty"`
@@ -1608,9 +1572,7 @@ type ControlPlaneStatefulSet struct {
 	Pods LabelsAndAnnotations `json:"pods,omitempty"`
 
 	// Image is the image for the controlPlane statefulSet container
-	// It defaults to the vCluster pro repository that includes the optional pro modules that are turned off by default.
-	// If you still want to use the pure OSS build, set the repository to 'loft-sh/vcluster-oss'.
-	Image Image `json:"image,omitempty"`
+	Image StatefulSetImage `json:"image,omitempty"`
 
 	// ImagePullPolicy is the policy how to pull the image.
 	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
@@ -1667,7 +1629,7 @@ type DistroK8s struct {
 	// ControllerManager holds configuration specific to starting the controller manager.
 	ControllerManager DistroContainerEnabled `json:"controllerManager,omitempty"`
 
-	// Scheduler holds configuration specific to starting the scheduler.
+	// Scheduler holds configuration specific to starting the scheduler. Enable this via controlPlane.advanced.virtualScheduler.enabled
 	Scheduler DistroContainerEnabled `json:"scheduler,omitempty"`
 
 	DistroCommon `json:",inline"`
@@ -1708,6 +1670,20 @@ type DistroContainerEnabled struct {
 	ExtraArgs []string `json:"extraArgs,omitempty"`
 }
 
+type StatefulSetImage struct {
+	// Configure the registry of the container image, e.g. my-registry.com or ghcr.io
+	// It defaults to ghcr.io and can be overriding either by using this field or controlPlane.advanced.defaultImageRegistry
+	Registry string `json:"registry,omitempty"`
+
+	// Configure the repository of the container image, e.g. my-repo/my-image.
+	// It defaults to the vCluster pro repository that includes the optional pro modules that are turned off by default.
+	// If you still want to use the pure OSS build, use 'loft-sh/vcluster-oss' instead.
+	Repository string `json:"repository,omitempty"`
+
+	// Tag is the tag of the container image, e.g. latest
+	Tag string `json:"tag,omitempty"`
+}
+
 type Image struct {
 	// Registry is the registry of the container image, e.g. my-registry.com or ghcr.io. This setting can be globally
 	// overridden via the controlPlane.advanced.defaultImageRegistry option. Empty means docker hub.
@@ -1716,62 +1692,8 @@ type Image struct {
 	// Repository is the repository of the container image, e.g. my-repo/my-image
 	Repository string `json:"repository,omitempty"`
 
-	// Tag is the tag of the container image, and is the default version.
+	// Tag is the tag of the container image, e.g. latest. If set to the default, it will use the host Kubernetes version.
 	Tag string `json:"tag,omitempty"`
-}
-
-// UnmarshalJSON makes the schema change from string to Image backwards compatible
-func (i *Image) UnmarshalJSON(data []byte) error {
-	var str string
-	if err := json.Unmarshal(data, &str); err == nil {
-		ParseImageRef(str, i)
-		return nil
-	}
-
-	type Alias Image
-	var aux Alias
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	*i = Image(aux)
-	return nil
-}
-
-// UnmarshalYAML makes the schema change from string to Image backwards compatible
-func (i *Image) UnmarshalYAML(node *yamlv3.Node) error {
-	if node.Kind == yamlv3.ScalarNode {
-		ParseImageRef(node.Value, i)
-		return nil
-	}
-
-	type Alias Image
-	var aux Alias
-	if err := node.Decode(&aux); err != nil {
-		return err
-	}
-	*i = Image(aux)
-	return nil
-}
-
-func (i *Image) String() (ref string) {
-	if i == nil {
-		return
-	}
-
-	if i.Registry != "" {
-		ref = i.Registry + "/"
-	}
-
-	if i.Registry != "" && i.Repository != "" && !strings.ContainsRune(i.Repository, '/') {
-		ref += "library/"
-	}
-	ref += i.Repository
-
-	if i.Tag != "" {
-		ref += ":" + i.Tag
-	}
-
-	return ref
 }
 
 type ImagePullSecretName struct {
