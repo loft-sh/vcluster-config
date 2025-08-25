@@ -30,8 +30,8 @@ func MigrateLegacyConfig(distro, oldValues string) (string, error) {
 	}
 
 	switch distro {
-	case config.K3SDistro:
-		err = migrateK3s(distro, oldValues, toConfig)
+	case config.K0SDistro, config.K3SDistro:
+		err = migrateK3sAndK0s(distro, oldValues, toConfig)
 		if err != nil {
 			return "", fmt.Errorf("migrate legacy %s values: %w", distro, err)
 		}
@@ -67,7 +67,7 @@ func migrateK8sAndEKS(oldValues string, newConfig *config.Config) error {
 	}
 	convertAPIValues(oldConfig.API, &newConfig.ControlPlane.Distro.K8S.APIServer)
 	convertControllerValues(oldConfig.Controller, &newConfig.ControlPlane.Distro.K8S.ControllerManager)
-	convertSchedulerValues(oldConfig, &newConfig.ControlPlane.Distro.K8S.Scheduler)
+	convertSchedulerValues(oldConfig.Scheduler, &newConfig.ControlPlane.Distro.K8S.Scheduler)
 
 	// convert etcd
 	err = convertEtcd(oldConfig.Etcd, newConfig)
@@ -82,7 +82,7 @@ func migrateK8sAndEKS(oldValues string, newConfig *config.Config) error {
 	applyStorage(oldConfig.Storage, newConfig)
 
 	// syncer config
-	err = convertK8sSyncerConfig(config.K8SDistro, oldConfig.Syncer, newConfig)
+	err = convertK8sSyncerConfig(oldConfig.Syncer, newConfig)
 	if err != nil {
 		return fmt.Errorf("error converting syncer config: %w", err)
 	}
@@ -104,9 +104,9 @@ func migrateK8sAndEKS(oldValues string, newConfig *config.Config) error {
 	return nil
 }
 
-func migrateK3s(distro, oldValues string, newConfig *config.Config) error {
+func migrateK3sAndK0s(distro, oldValues string, newConfig *config.Config) error {
 	// unmarshal legacy config
-	oldConfig := &LegacyK3s{}
+	oldConfig := &LegacyK0sAndK3s{}
 	err := oldConfig.UnmarshalYAMLStrict([]byte(oldValues))
 	if err != nil {
 		if err := errIfConfigIsAlreadyConverted(oldValues); err != nil {
@@ -115,7 +115,16 @@ func migrateK3s(distro, oldValues string, newConfig *config.Config) error {
 		return fmt.Errorf("unmarshal legacy config: %w", err)
 	}
 
-	if distro == config.K3SDistro {
+	// distro specific
+	if distro == config.K0SDistro {
+		newConfig.ControlPlane.Distro.K0S.Enabled = true
+
+		// vcluster config
+		err = convertVClusterConfig(oldConfig.VCluster, &newConfig.ControlPlane.Distro.K0S.DistroCommon, &newConfig.ControlPlane.Distro.K0S.DistroContainer, newConfig)
+		if err != nil {
+			return fmt.Errorf("error converting vcluster config: %w", err)
+		}
+	} else if distro == config.K3SDistro {
 		newConfig.ControlPlane.Distro.K3S.Enabled = true
 		newConfig.ControlPlane.Distro.K3S.Token = oldConfig.K3sToken
 
@@ -136,18 +145,13 @@ func migrateK3s(distro, oldValues string, newConfig *config.Config) error {
 	applyStorage(oldConfig.Storage, newConfig)
 
 	// syncer config
-	err = convertSyncerConfig(config.K3SDistro, oldConfig.Syncer, newConfig)
+	err = convertSyncerConfig(oldConfig.Syncer, newConfig)
 	if err != nil {
 		return fmt.Errorf("error converting syncer config: %w", err)
 	}
 
 	// migrate embedded etcd
 	convertEmbeddedEtcd(oldConfig.EmbeddedEtcd, newConfig)
-
-	// migrate scheduler
-	if oldConfig.Sync.Nodes.EnableScheduler != nil {
-		newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = *oldConfig.Sync.Nodes.EnableScheduler
-	}
 
 	// convert the rest
 	return convertBaseValues(oldConfig.BaseHelm, newConfig)
@@ -227,11 +231,8 @@ func convertControllerValues(oldConfig ControllerValues, newContainer *config.Di
 	newContainer.ExtraArgs = oldConfig.ExtraArgs
 }
 
-func convertSchedulerValues(oldConfig *LegacyK8s, newContainer *config.DistroContainerEnabled) {
-	if oldConfig.Sync.Nodes.EnableScheduler != nil {
-		newContainer.Enabled = *oldConfig.Sync.Nodes.EnableScheduler
-	}
-	newContainer.ExtraArgs = oldConfig.Scheduler.ExtraArgs
+func convertSchedulerValues(oldConfig SchedulerValues, newContainer *config.DistroContainer) {
+	newContainer.ExtraArgs = oldConfig.ExtraArgs
 }
 
 func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
@@ -317,7 +318,7 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 	}
 
 	if oldConfig.MultiNamespaceMode.Enabled != nil {
-		newConfig.Sync.ToHost.Namespaces.Enabled = *oldConfig.MultiNamespaceMode.Enabled
+		newConfig.Experimental.MultiNamespaceMode.Enabled = *oldConfig.MultiNamespaceMode.Enabled
 	}
 
 	if len(oldConfig.SecurityContext) > 0 {
@@ -362,6 +363,26 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 	}
 	if oldConfig.Rbac.ClusterRole.Create != nil && *oldConfig.Rbac.ClusterRole.Create {
 		newConfig.RBAC.ClusterRole.Enabled = "true"
+	}
+
+	if oldConfig.NoopSyncer.Enabled {
+		newConfig.Experimental.SyncSettings.DisableSync = true
+		if oldConfig.NoopSyncer.Secret.KubeConfig != "" {
+			newConfig.Experimental.VirtualClusterKubeConfig.KubeConfig = oldConfig.NoopSyncer.Secret.KubeConfig
+		}
+		if oldConfig.NoopSyncer.Secret.ClientCaCert != "" {
+			newConfig.Experimental.VirtualClusterKubeConfig.ClientCACert = oldConfig.NoopSyncer.Secret.ClientCaCert
+		}
+		if oldConfig.NoopSyncer.Secret.ServerCaKey != "" {
+			newConfig.Experimental.VirtualClusterKubeConfig.ServerCAKey = oldConfig.NoopSyncer.Secret.ServerCaKey
+		}
+		if oldConfig.NoopSyncer.Secret.ServerCaCert != "" {
+			newConfig.Experimental.VirtualClusterKubeConfig.ServerCACert = oldConfig.NoopSyncer.Secret.ServerCaCert
+		}
+		if oldConfig.NoopSyncer.Secret.RequestHeaderCaCert != "" {
+			newConfig.Experimental.VirtualClusterKubeConfig.RequestHeaderCACert = oldConfig.NoopSyncer.Secret.RequestHeaderCaCert
+		}
+		newConfig.Experimental.SyncSettings.RewriteKubernetesService = oldConfig.NoopSyncer.Synck8sService
 	}
 
 	newConfig.Experimental.Deploy.VCluster.Manifests = oldConfig.Init.Manifests
@@ -583,6 +604,9 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 	if oldConfig.Sync.Nodes.NodeSelector != "" {
 		newConfig.Sync.FromHost.Nodes.Selector.Labels = mergeIntoMap(make(map[string]string), strings.Split(oldConfig.Sync.Nodes.NodeSelector, ","))
 	}
+	if oldConfig.Sync.Nodes.EnableScheduler != nil {
+		newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = *oldConfig.Sync.Nodes.EnableScheduler
+	}
 	if oldConfig.Sync.Nodes.SyncNodeChanges != nil {
 		newConfig.Sync.FromHost.Nodes.SyncBackChanges = *oldConfig.Sync.Nodes.SyncNodeChanges
 	}
@@ -645,7 +669,7 @@ func convertEmbeddedEtcd(oldConfig EmbeddedEtcdValues, newConfig *config.Config)
 	}
 }
 
-func convertK8sSyncerConfig(distro string, oldConfig K8sSyncerValues, newConfig *config.Config) error {
+func convertK8sSyncerConfig(oldConfig K8sSyncerValues, newConfig *config.Config) error {
 	newConfig.ControlPlane.StatefulSet.Persistence.AddVolumes = oldConfig.Volumes
 	if oldConfig.PriorityClassName != "" {
 		newConfig.ControlPlane.StatefulSet.Scheduling.PriorityClassName = oldConfig.PriorityClassName
@@ -664,10 +688,10 @@ func convertK8sSyncerConfig(distro string, oldConfig K8sSyncerValues, newConfig 
 		newConfig.ControlPlane.StatefulSet.Security.ContainerSecurityContext = oldConfig.SecurityContext
 	}
 
-	return convertSyncerConfig(distro, oldConfig.SyncerValues, newConfig)
+	return convertSyncerConfig(oldConfig.SyncerValues, newConfig)
 }
 
-func convertSyncerConfig(distro string, oldConfig SyncerValues, newConfig *config.Config) error {
+func convertSyncerConfig(oldConfig SyncerValues, newConfig *config.Config) error {
 	convertStatefulSetImage(oldConfig.Image, &newConfig.ControlPlane.StatefulSet.Image)
 	if oldConfig.ImagePullPolicy != "" {
 		newConfig.ControlPlane.StatefulSet.ImagePullPolicy = oldConfig.ImagePullPolicy
@@ -710,10 +734,10 @@ func convertSyncerConfig(distro string, oldConfig SyncerValues, newConfig *confi
 		newConfig.ControlPlane.StatefulSet.Labels = oldConfig.Labels
 	}
 
-	return convertSyncerExtraArgs(distro, oldConfig.ExtraArgs, newConfig)
+	return convertSyncerExtraArgs(oldConfig.ExtraArgs, newConfig)
 }
 
-func convertSyncerExtraArgs(distro string, extraArgs []string, newConfig *config.Config) error {
+func convertSyncerExtraArgs(extraArgs []string, newConfig *config.Config) error {
 	var err error
 	var flag, value string
 
@@ -740,7 +764,7 @@ func convertSyncerExtraArgs(distro string, extraArgs []string, newConfig *config
 			continue
 		}
 
-		err = migrateFlag(distro, flag, value, newConfig)
+		err = migrateFlag(flag, value, newConfig)
 		if err != nil {
 			return fmt.Errorf("migrate extra syncer flag --%s: %w", flag, err)
 		}
@@ -755,7 +779,7 @@ func convertSyncerExtraArgs(distro string, extraArgs []string, newConfig *config
 	return nil
 }
 
-func migrateFlag(distro, key, value string, newConfig *config.Config) error {
+func migrateFlag(key, value string, newConfig *config.Config) error {
 	if newConfig == nil {
 		return errors.New("newConfig is not set")
 	}
@@ -860,13 +884,8 @@ func migrateFlag(distro, key, value string, newConfig *config.Config) error {
 		}
 	case "enable-scheduler":
 		if value == "" || value == "true" {
-			if distro == config.K8SDistro {
-				newConfig.ControlPlane.Distro.K8S.Scheduler.Enabled = true
-			} else if distro == config.K3SDistro {
-				newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = true
-			}
+			newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = true
 		} else if value == "false" {
-			newConfig.ControlPlane.Distro.K8S.Scheduler.Enabled = false
 			newConfig.ControlPlane.Advanced.VirtualScheduler.Enabled = false
 		}
 	case "disable-fake-kubelets":
@@ -993,13 +1012,13 @@ func migrateFlag(distro, key, value string, newConfig *config.Config) error {
 		}
 	case "multi-namespace-mode":
 		if value == "" || value == "true" {
-			newConfig.Sync.ToHost.Namespaces.Enabled = true
+			newConfig.Experimental.MultiNamespaceMode.Enabled = true
 		}
 	case "namespace-labels":
 		if value == "" {
 			return fmt.Errorf("value is missing")
 		}
-		newConfig.Sync.ToHost.Namespaces.ExtraLabels = mergeIntoMap(newConfig.Sync.ToHost.Namespaces.ExtraLabels, strings.Split(value, ","))
+		newConfig.Experimental.MultiNamespaceMode.NamespaceLabels = mergeIntoMap(newConfig.Experimental.MultiNamespaceMode.NamespaceLabels, strings.Split(value, ","))
 	case "sync-all-configmaps":
 		if value == "" || value == "true" {
 			newConfig.Sync.ToHost.ConfigMaps.All = true

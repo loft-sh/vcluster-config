@@ -280,6 +280,40 @@ func TestConfig_IsProFeatureEnabled(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "Pro Sync Settings not used",
+			config: &Config{
+				Experimental: Experimental{
+					SyncSettings: ExperimentalSyncSettings{
+						DisableSync:              false,
+						RewriteKubernetesService: false,
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "Pro Sync Setting disableSync used",
+			config: &Config{
+				Experimental: Experimental{
+					SyncSettings: ExperimentalSyncSettings{
+						DisableSync: true,
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Pro Sync Setting rewriteKubernetesService used",
+			config: &Config{
+				Experimental: Experimental{
+					SyncSettings: ExperimentalSyncSettings{
+						RewriteKubernetesService: true,
+					},
+				},
+			},
+			expected: true,
+		},
+		{
 			name: "Isolated Control Plane not used",
 			config: &Config{
 				Experimental: Experimental{
@@ -356,21 +390,6 @@ func TestConfig_IsProFeatureEnabled(t *testing.T) {
 					FromHost: SyncFromHost{
 						CustomResources: map[string]SyncFromHostCustomResource{
 							"demo": {},
-						},
-					},
-				},
-			},
-			expected: true,
-		},
-		{
-			name: "Hybrid scheduling is enabled",
-			config: &Config{
-				Sync: Sync{
-					ToHost: SyncToHost{
-						Pods: SyncPods{
-							HybridScheduling: HybridScheduling{
-								Enabled: true,
-							},
 						},
 					},
 				},

@@ -45,6 +45,17 @@ serviceCIDR: 10.96.0.0/16
       podManagementPolicy: OrderedReady`,
 		},
 		{
+			Name:   "Simple k0s",
+			Distro: "k0s",
+			Expected: `controlPlane:
+  distro:
+    k0s:
+      enabled: true
+  statefulSet:
+    scheduling:
+      podManagementPolicy: OrderedReady`,
+		},
+		{
 			Name:   "Plugin k3s",
 			Distro: "k3s",
 			In: `plugin:
@@ -131,10 +142,8 @@ experimental:
     - apiVersion: v1
       kind: Secret
     version: v1beta1
-sync:
-  toHost:
-    namespaces:
-      enabled: true`,
+  multiNamespaceMode:
+    enabled: true`,
 		},
 		{
 			Name:   "persistence false",
@@ -201,6 +210,96 @@ coredns:
       podManagementPolicy: OrderedReady`,
 		},
 		{
+			Name:   "fallback host dns",
+			Distro: "k0s",
+			In: `fallbackHostDns: true
+pro: true`,
+			Expected: `controlPlane:
+  distro:
+    k0s:
+      enabled: true
+  statefulSet:
+    scheduling:
+      podManagementPolicy: OrderedReady
+networking:
+  advanced:
+    fallbackHostCluster: true
+pro: true`,
+		},
+		{
+			Name:   "isolated mode",
+			Distro: "k0s",
+			In: `isolation:
+  enabled: true
+  podSecurityStandard: baseline
+  resourceQuota:
+    enabled: true
+  limitRange:
+    enabled: true
+  networkPolicy:
+    enabled: false`,
+			Expected: `controlPlane:
+  distro:
+    k0s:
+      enabled: true
+  statefulSet:
+    scheduling:
+      podManagementPolicy: OrderedReady
+policies:
+  limitRange:
+    enabled: true
+  podSecurityStandard: baseline
+  resourceQuota:
+    enabled: true`,
+		},
+		{
+			Name:   "convert flags",
+			Distro: "k0s",
+			In: `syncer:
+  extraArgs:
+  - --tls-san=my-vcluster.example.com
+  - --service-account-token-secrets=true
+  - --mount-physical-host-paths=true
+  - --sync-all-nodes`,
+			Expected: `controlPlane:
+  distro:
+    k0s:
+      enabled: true
+  hostPathMapper:
+    enabled: true
+  proxy:
+    extraSANs:
+    - my-vcluster.example.com
+  statefulSet:
+    scheduling:
+      podManagementPolicy: OrderedReady
+sync:
+  fromHost:
+    nodes:
+      selector:
+        all: true
+  toHost:
+    pods:
+      useSecretsForSATokens: true`,
+		},
+		{
+			Name:   "convert deprecated host-path-mapper flag",
+			Distro: "k0s",
+			In: `syncer:
+  extraArgs:
+  - --rewrite-host-paths=true
+`,
+			Expected: `controlPlane:
+  distro:
+    k0s:
+      enabled: true
+  hostPathMapper:
+    enabled: true
+  statefulSet:
+    scheduling:
+      podManagementPolicy: OrderedReady`,
+		},
+		{
 			Name:   "embedded etcd",
 			Distro: "k8s",
 			In: `embeddedEtcd:
@@ -219,73 +318,6 @@ coredns:
 		},
 		{
 			Name:   "scheduler",
-			Distro: "k8s",
-			In: `sync:
-  csistoragecapacities:
-    enabled: false
-  csinodes:
-    enabled: false
-  nodes:
-    enableScheduler: true`,
-			Expected: `controlPlane:
-  backingStore:
-    etcd:
-      deploy:
-        enabled: true
-  distro:
-    k8s:
-      enabled: true
-      scheduler:
-        enabled: true
-  statefulSet:
-    scheduling:
-      podManagementPolicy: OrderedReady
-sync:
-  fromHost:
-    csiNodes:
-      enabled: false
-    csiStorageCapacities:
-      enabled: false`,
-		},
-		{
-			Name:   "scheduler extra args",
-			Distro: "k8s",
-			In: `syncer:
-  extraArgs:
-  - --enable-scheduler`,
-			Expected: `controlPlane:
-  backingStore:
-    etcd:
-      deploy:
-        enabled: true
-  distro:
-    k8s:
-      enabled: true
-      scheduler:
-        enabled: true
-  statefulSet:
-    scheduling:
-      podManagementPolicy: OrderedReady`,
-		},
-		{
-			Name:   "scheduler extra args k3s (deprecated)",
-			Distro: "k3s",
-			In: `syncer:
-  extraArgs:
-  - --enable-scheduler`,
-			Expected: `controlPlane:
-  advanced:
-    virtualScheduler:
-      enabled: true
-  distro:
-    k3s:
-      enabled: true
-  statefulSet:
-    scheduling:
-      podManagementPolicy: OrderedReady`,
-		},
-		{
-			Name:   "scheduler (deprecated)",
 			Distro: "k3s",
 			In: `sync:
   csistoragecapacities:
