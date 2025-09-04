@@ -29,11 +29,11 @@ jobs:
         run: |
           if [[ -n "${MANUAL_TAG}" ]]; then
             echo "Manually set tag: ${MANUAL_TAG}"
-            final_tag=${MANUAL_TAG}
+            final_tag="${MANUAL_TAG}"
           else
             # For tag push events, use github.ref_name instead
             echo "Tag from push event: ${{ github.ref_name }}"
-            final_tag=${{ github.ref_name }}
+            final_tag="${{ github.ref_name }}"
           fi
           echo "release_tag=${final_tag}" >> "$GITHUB_OUTPUT"
 
@@ -49,7 +49,7 @@ jobs:
         run: |
           git config --global user.name "Loft Bot"
           git config --global user.email 'loft-bot@users.noreply.github.com'
-          git config --global url.https://$GH_ACCESS_TOKEN@github.com/.insteadOf https://github.com/
+          git config --global url.https://"$GH_ACCESS_TOKEN"@github.com/.insteadOf https://github.com/
         env:
           GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
 
@@ -75,7 +75,7 @@ jobs:
           cd vcluster-docs
 
           branch_name="generate-partials-for-${VERSION_TAG}"
-          git switch -c ${branch_name}
+          git switch -c "${branch_name}"
 
           # generate platform partials
           go run hack/platform/partials/main.go "configsrc/platform/${versionTag}/vcluster.schema.json"
@@ -89,8 +89,8 @@ jobs:
 
           # commit changes
           git commit -m "chore: generate vCluster Platform partials for vCluster ${{ env.VERSION_TAG }}"
-          git push -u origin -f ${branch_name}
-          gh pr create --fill --head ${branch_name} 
+          git push -u origin -f "${branch_name}"
+          gh pr create --fill --head "${branch_name}" 
           echo "Create PR in vcluster-docs"
 
       - name: Generate vCluster partials
@@ -101,18 +101,43 @@ jobs:
         run: |
           versionTag=${VERSION_TAG#"vcluster-v"}
           echo "parsed vCluster tag: ${versionTag}"
-          mkdir -p "vcluster-docs/configsrc/vcluster/${versionTag}"
-
-          cp vcluster.schema.json "vcluster-docs/configsrc/vcluster/${versionTag}/vcluster.schema.json"
-          # copy default values.yaml
-          cp config/values.yaml "vcluster-docs/configsrc/vcluster/${versionTag}/default_values.yaml"
+          
           cd vcluster-docs
+          
+          # Check if versioned docs folder exists for this version
+          if [ -d "vcluster_versioned_docs/version-${versionTag}.0" ]; then
+            echo "Version ${versionTag}.0 exists in versioned docs, generating partials there"
+            # Create versioned config source directory
+            mkdir -p "configsrc/vcluster/${versionTag}"
+            cp ../vcluster.schema.json "configsrc/vcluster/${versionTag}/vcluster.schema.json"
+            cp ../config/values.yaml "configsrc/vcluster/${versionTag}/default_values.yaml"
+            
+            target_dir="vcluster_versioned_docs/version-${versionTag}.0/_partials/config"
+          else
+            echo "Version ${versionTag}.0 does not exist in versioned docs, generating partials in main vcluster folder"
+            # Use main config source directory
+            mkdir -p "configsrc/vcluster/main"
+            cp ../vcluster.schema.json "configsrc/vcluster/main/vcluster.schema.json"
+            cp ../config/values.yaml "configsrc/vcluster/main/default_values.yaml"
+            
+            # Also update the version-specific folder for future reference
+            mkdir -p "configsrc/vcluster/${versionTag}"
+            cp ../vcluster.schema.json "configsrc/vcluster/${versionTag}/vcluster.schema.json"
+            cp ../config/values.yaml "configsrc/vcluster/${versionTag}/default_values.yaml"
+            
+            target_dir="vcluster/_partials/config"
+          fi
 
           branch_name="generate-partials-for-${VERSION_TAG}"
-          git switch -c ${branch_name}
+          git switch -c "${branch_name}"
 
-          # generate vcluster partials for given version
-          go run hack/vcluster/partials/main.go "configsrc/vcluster/${versionTag}" "vcluster_versioned_docs/version-${versionTag}.0/_partials/config"
+          # generate vcluster partials for target directory
+          if [ -d "vcluster_versioned_docs/version-${versionTag}.0" ]; then
+            go run hack/vcluster/partials/main.go "configsrc/vcluster/${versionTag}" "${target_dir}"
+          else
+            # For main docs, use the main config folder
+            go run hack/vcluster/partials/main.go "configsrc/vcluster/main" "${target_dir}"
+          fi
 
           git add .
 
@@ -123,6 +148,6 @@ jobs:
 
           # commit changes
           git commit -m "chore: generate vCluster partials for vCluster ${versionTag}"
-          git push -u origin -f ${branch_name}
-          gh pr create --fill --head ${branch_name} 
+          git push -u origin -f "${branch_name}"
+          gh pr create --fill --head "${branch_name}" 
           echo "Create PR in vcluster-docs"
