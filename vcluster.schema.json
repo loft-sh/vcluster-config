@@ -88,6 +88,10 @@
           "type": "string",
           "description": "Schedule specifies a scheduled time in Cron format, see https://en.wikipedia.org/wiki/Cron for a virtual cluster snapshot to be taken\n+optional"
         },
+        "volumes": {
+          "$ref": "#/$defs/VolumeSnapshot",
+          "description": "Volumes specifies a set of configuration for the volume snapshot\n+optional"
+        },
         "storage": {
           "$ref": "#/$defs/ScheduledSnapshotStorage",
           "description": "Storage specifies a set of configuration where the snapshot will be stored\n+optional"
@@ -4977,6 +4981,16 @@
       "additionalProperties": false,
       "type": "object",
       "description": "VolumeMount describes a mounting of a Volume within a container."
+    },
+    "VolumeSnapshot": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled specifies whether a snapshot should also include volumes in the snapshot\n+optional"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "VolumeSnapshotController": {
       "properties": {
