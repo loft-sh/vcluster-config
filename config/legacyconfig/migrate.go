@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/loft-sh/vcluster-config/config"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -258,6 +259,7 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 		}
 	}
 
+	newConfig.Experimental.IsolatedControlPlane.Headless = oldConfig.Headless
 	newConfig.ControlPlane.Advanced.DefaultImageRegistry = strings.TrimSuffix(oldConfig.DefaultImageRegistry, "/")
 
 	if len(oldConfig.Plugin) > 0 {
@@ -412,7 +414,7 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 		}
 
 		if oldConfig.Isolation.Namespace != nil {
-			return fmt.Errorf("isolation.namespace is no longer supported")
+			return fmt.Errorf("isolation.namespace is no longer supported, use experimental.syncSettings.targetNamespace instead")
 		}
 		if oldConfig.Isolation.NodeProxyPermission.Enabled != nil {
 			return fmt.Errorf("isolation.nodeProxyPermission.enabled is no longer supported, use rbac.clusterRole.overwriteRules instead")
@@ -618,7 +620,13 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 		newConfig.Sync.FromHost.CSIDrivers.Enabled = config.StrBool(strconv.FormatBool(*oldConfig.Sync.CSIDrivers.Enabled))
 	}
 	if oldConfig.Sync.Generic.Config != "" {
-		return fmt.Errorf("generic sync is no longer supported, please use sync.toHost.customResources and sync.fromHost.customResources instead")
+		genericSyncConfig := &config.ExperimentalGenericSync{}
+		err := yaml.Unmarshal([]byte(oldConfig.Sync.Generic.Config), genericSyncConfig)
+		if err != nil {
+			return fmt.Errorf("decode sync.generic.config: %w", err)
+		}
+
+		newConfig.Experimental.GenericSync = *genericSyncConfig
 	}
 
 	return nil
@@ -758,11 +766,21 @@ func migrateFlag(distro, key, value string, newConfig *config.Config) error {
 	case "pro-license-secret":
 		return fmt.Errorf("cannot be used directly, use proLicenseSecret value")
 	case "remote-kube-config":
-		return fmt.Errorf("this feature is not supported anymore")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+		newConfig.Experimental.IsolatedControlPlane.Enabled = true
+		newConfig.Experimental.IsolatedControlPlane.KubeConfig = value
 	case "remote-namespace":
-		return fmt.Errorf("this feature is not supported anymore")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+		newConfig.Experimental.IsolatedControlPlane.Namespace = value
 	case "remote-service-name":
-		return fmt.Errorf("this feature is not supported anymore")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+		newConfig.Experimental.IsolatedControlPlane.Service = value
 	case "integrated-coredns":
 		return fmt.Errorf("cannot be used directly")
 	case "use-coredns-plugin":
@@ -815,7 +833,11 @@ func migrateFlag(distro, key, value string, newConfig *config.Config) error {
 
 		newConfig.ControlPlane.Proxy.ExtraSANs = append(newConfig.ControlPlane.Proxy.ExtraSANs, strings.Split(value, ",")...)
 	case "target-namespace":
-		return fmt.Errorf("this is not supported anymore, vCluster needs to be created in the same namespace as the target workloads")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+
+		newConfig.Experimental.SyncSettings.TargetNamespace = value
 	case "service-name":
 		return fmt.Errorf("this is not supported anymore, the service needs to be the vCluster name")
 	case "name":
