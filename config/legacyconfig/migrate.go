@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/loft-sh/vcluster-config/config"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -62,7 +63,7 @@ func migrateK8sAndEKS(oldValues string, newConfig *config.Config) error {
 		if oldConfig.API.ImagePullPolicy != "" {
 			newConfig.ControlPlane.Distro.K8S.ImagePullPolicy = oldConfig.API.ImagePullPolicy
 		}
-		config.ParseImageRef(oldConfig.API.Image, &newConfig.ControlPlane.Distro.K8S.Image)
+		convertImage(oldConfig.API.Image, &newConfig.ControlPlane.Distro.K8S.Image)
 	}
 	convertAPIValues(oldConfig.API, &newConfig.ControlPlane.Distro.K8S.APIServer)
 	convertControllerValues(oldConfig.Controller, &newConfig.ControlPlane.Distro.K8S.ControllerManager)
@@ -169,7 +170,7 @@ func convertEtcd(oldConfig EtcdValues, newConfig *config.Config) error {
 		newConfig.ControlPlane.BackingStore.Etcd.Deploy.StatefulSet.ImagePullPolicy = oldConfig.ImagePullPolicy
 	}
 	if oldConfig.Image != "" {
-		config.ParseImageRef(oldConfig.Image, &newConfig.ControlPlane.BackingStore.Etcd.Deploy.StatefulSet.Image)
+		convertImage(oldConfig.Image, &newConfig.ControlPlane.BackingStore.Etcd.Deploy.StatefulSet.Image)
 	}
 	newConfig.ControlPlane.BackingStore.Etcd.Deploy.StatefulSet.ExtraArgs = oldConfig.ExtraArgs
 	if oldConfig.Resources != nil {
@@ -258,6 +259,7 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 		}
 	}
 
+	newConfig.Experimental.IsolatedControlPlane.Headless = oldConfig.Headless
 	newConfig.ControlPlane.Advanced.DefaultImageRegistry = strings.TrimSuffix(oldConfig.DefaultImageRegistry, "/")
 
 	if len(oldConfig.Plugin) > 0 {
@@ -412,7 +414,7 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 		}
 
 		if oldConfig.Isolation.Namespace != nil {
-			return fmt.Errorf("isolation.namespace is no longer supported")
+			return fmt.Errorf("isolation.namespace is no longer supported, use experimental.syncSettings.targetNamespace instead")
 		}
 		if oldConfig.Isolation.NodeProxyPermission.Enabled != nil {
 			return fmt.Errorf("isolation.nodeProxyPermission.enabled is no longer supported, use rbac.clusterRole.overwriteRules instead")
@@ -618,7 +620,13 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 		newConfig.Sync.FromHost.CSIDrivers.Enabled = config.StrBool(strconv.FormatBool(*oldConfig.Sync.CSIDrivers.Enabled))
 	}
 	if oldConfig.Sync.Generic.Config != "" {
-		return fmt.Errorf("generic sync is no longer supported, please use sync.toHost.customResources and sync.fromHost.customResources instead")
+		genericSyncConfig := &config.ExperimentalGenericSync{}
+		err := yaml.Unmarshal([]byte(oldConfig.Sync.Generic.Config), genericSyncConfig)
+		if err != nil {
+			return fmt.Errorf("decode sync.generic.config: %w", err)
+		}
+
+		newConfig.Experimental.GenericSync = *genericSyncConfig
 	}
 
 	return nil
@@ -660,9 +668,7 @@ func convertK8sSyncerConfig(distro string, oldConfig K8sSyncerValues, newConfig 
 }
 
 func convertSyncerConfig(distro string, oldConfig SyncerValues, newConfig *config.Config) error {
-	if oldConfig.Image != "" {
-		config.ParseImageRef(oldConfig.Image, &newConfig.ControlPlane.StatefulSet.Image)
-	}
+	convertStatefulSetImage(oldConfig.Image, &newConfig.ControlPlane.StatefulSet.Image)
 	if oldConfig.ImagePullPolicy != "" {
 		newConfig.ControlPlane.StatefulSet.ImagePullPolicy = oldConfig.ImagePullPolicy
 	}
@@ -758,11 +764,21 @@ func migrateFlag(distro, key, value string, newConfig *config.Config) error {
 	case "pro-license-secret":
 		return fmt.Errorf("cannot be used directly, use proLicenseSecret value")
 	case "remote-kube-config":
-		return fmt.Errorf("this feature is not supported anymore")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+		newConfig.Experimental.IsolatedControlPlane.Enabled = true
+		newConfig.Experimental.IsolatedControlPlane.KubeConfig = value
 	case "remote-namespace":
-		return fmt.Errorf("this feature is not supported anymore")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+		newConfig.Experimental.IsolatedControlPlane.Namespace = value
 	case "remote-service-name":
-		return fmt.Errorf("this feature is not supported anymore")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+		newConfig.Experimental.IsolatedControlPlane.Service = value
 	case "integrated-coredns":
 		return fmt.Errorf("cannot be used directly")
 	case "use-coredns-plugin":
@@ -815,7 +831,11 @@ func migrateFlag(distro, key, value string, newConfig *config.Config) error {
 
 		newConfig.ControlPlane.Proxy.ExtraSANs = append(newConfig.ControlPlane.Proxy.ExtraSANs, strings.Split(value, ",")...)
 	case "target-namespace":
-		return fmt.Errorf("this is not supported anymore, vCluster needs to be created in the same namespace as the target workloads")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+
+		newConfig.Experimental.SyncSettings.TargetNamespace = value
 	case "service-name":
 		return fmt.Errorf("this is not supported anymore, the service needs to be the vCluster name")
 	case "name":
@@ -907,7 +927,7 @@ func migrateFlag(distro, key, value string, newConfig *config.Config) error {
 			return fmt.Errorf("value is missing")
 		}
 
-		config.ParseImageRef(value, &newConfig.Sync.ToHost.Pods.RewriteHosts.InitContainer.Image)
+		newConfig.Sync.ToHost.Pods.RewriteHosts.InitContainer.Image = value
 	case "cluster-domain":
 		if value == "" {
 			return fmt.Errorf("value is missing")
@@ -1089,9 +1109,7 @@ func applyStorage(oldConfig Storage, newConfig *config.Config) {
 
 func convertVClusterConfig(oldConfig VClusterValues, retDistroCommon *config.DistroCommon, retDistroContainer *config.DistroContainer, newConfig *config.Config) error {
 	retDistroCommon.Env = oldConfig.Env
-	if oldConfig.Image != "" {
-		config.ParseImageRef(oldConfig.Image, &retDistroCommon.Image)
-	}
+	convertImage(oldConfig.Image, &retDistroCommon.Image)
 	if len(oldConfig.Resources) > 0 {
 		retDistroCommon.Resources = mergeMaps(retDistroCommon.Resources, oldConfig.Resources)
 	}
@@ -1113,6 +1131,22 @@ func convertVClusterConfig(oldConfig VClusterValues, retDistroCommon *config.Dis
 	newConfig.ControlPlane.StatefulSet.Persistence.AddVolumeMounts = append(newConfig.ControlPlane.StatefulSet.Persistence.AddVolumeMounts, oldConfig.ExtraVolumeMounts...)
 	newConfig.ControlPlane.StatefulSet.Persistence.AddVolumes = append(newConfig.ControlPlane.StatefulSet.Persistence.AddVolumes, oldConfig.VolumeMounts...)
 	return nil
+}
+
+func convertStatefulSetImage(image string, into *config.StatefulSetImage) {
+	if image == "" {
+		return
+	}
+
+	into.Registry, into.Repository, into.Tag = config.SplitImage(image)
+}
+
+func convertImage(image string, into *config.Image) {
+	if image == "" {
+		return
+	}
+
+	into.Registry, into.Repository, into.Tag = config.SplitImage(image)
 }
 
 func mergeIntoMap(retMap map[string]string, arr []string) map[string]string {
