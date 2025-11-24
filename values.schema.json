@@ -457,10 +457,6 @@
         "globalMetadata": {
           "$ref": "#/$defs/ControlPlaneGlobalMetadata",
           "description": "GlobalMetadata is metadata that will be added to all resources deployed by Helm."
-        },
-        "kubeVip": {
-          "$ref": "#/$defs/KubeVip",
-          "description": "KubeVip holds configuration for embedded kube-vip that announces the virtual cluster endpoint IP on layer 2."
         }
       },
       "additionalProperties": false,
@@ -848,16 +844,6 @@
         "dnsConfig": {
           "$ref": "#/$defs/PodDNSConfig",
           "description": "Specifies the DNS parameters of a pod."
-        },
-        "initContainers": {
-          "items": true,
-          "type": "array",
-          "description": "InitContainers are additional init containers for the statefulSet."
-        },
-        "sidecarContainers": {
-          "items": true,
-          "type": "array",
-          "description": "SidecarContainers are additional sidecar containers for the statefulSet."
         }
       },
       "additionalProperties": false,
@@ -1042,11 +1028,7 @@
         },
         "dataSource": {
           "type": "string",
-          "description": "DataSource is the kine dataSource to use for the database. This depends on the database format.\nThis is optional for the external database. Examples:\n* mysql: mysql://username:password@tcp(hostname:3306)/k3s\n* postgres: postgres://username:password@hostname:5432/k3s"
-        },
-        "identityProvider": {
-          "type": "string",
-          "description": "IdentityProvider is the kine identity provider to use when generating temporary authentication tokens for enhanced security.\nThis is optional for the external database. Examples:\n* aws: RDS IAM Authentication"
+          "description": "DataSource is the kine dataSource to use for the database. This depends on the database format.\nThis is optional for the embedded database. Examples:\n* mysql: mysql://username:password@tcp(hostname:3306)/k3s\n* postgres: postgres://username:password@hostname:5432/k3s"
         },
         "keyFile": {
           "type": "string",
@@ -1290,12 +1272,16 @@
           "type": "string",
           "description": "Name is the name of this NodePool"
         },
-        "nodeTypeSelector": {
+        "provider": {
+          "type": "string",
+          "description": "Provider is the node provider of the nodes in this pool."
+        },
+        "requirements": {
           "items": {
             "$ref": "#/$defs/Requirement"
           },
           "type": "array",
-          "description": "NodeTypeSelector filters the types of nodes that can be provisioned by this pool.\nAll requirements must be met for a node type to be eligible."
+          "description": "Requirements filter the types of nodes that can be provisioned by this pool.\nAll requirements must be met for a node type to be eligible."
         },
         "taints": {
           "items": {
@@ -1338,7 +1324,8 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "name"
+        "name",
+        "provider"
       ]
     },
     "DynamicNodePoolDisruption": {
@@ -1375,23 +1362,6 @@
         "duration": {
           "type": "string",
           "description": "Duration determines how long a Budget is active since each Schedule hit.\nOnly minutes and hours are accepted, as cron does not work in seconds.\nIf omitted, the budget is always active.\nThis is required if Schedule is set."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "EnableAutoSwitch": {
-      "properties": {
-        "enabled": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "boolean"
-            }
-          ],
-          "description": "Enabled defines if this option should be enabled."
         }
       },
       "additionalProperties": false,
@@ -2013,11 +1983,7 @@
         },
         "dataSource": {
           "type": "string",
-          "description": "DataSource is the kine dataSource to use for the database. This depends on the database format.\nThis is optional for the external database. Examples:\n* mysql: mysql://username:password@tcp(hostname:3306)/k3s\n* postgres: postgres://username:password@hostname:5432/k3s"
-        },
-        "identityProvider": {
-          "type": "string",
-          "description": "IdentityProvider is the kine identity provider to use when generating temporary authentication tokens for enhanced security.\nThis is optional for the external database. Examples:\n* aws: RDS IAM Authentication"
+          "description": "DataSource is the kine dataSource to use for the database. This depends on the database format.\nThis is optional for the embedded database. Examples:\n* mysql: mysql://username:password@tcp(hostname:3306)/k3s\n* postgres: postgres://username:password@hostname:5432/k3s"
         },
         "keyFile": {
           "type": "string",
@@ -2301,10 +2267,6 @@
         "istio": {
           "$ref": "#/$defs/Istio",
           "description": "Istio syncs DestinationRules, Gateways and VirtualServices from virtual cluster to the host."
-        },
-        "netris": {
-          "type": "object",
-          "description": "Netris integration helps configuring netris networking for vCluster."
         }
       },
       "additionalProperties": false,
@@ -2520,24 +2482,6 @@
         "config": {
           "type": "object",
           "description": "Config is the config for the kube-proxy that will be merged into the default kube-proxy config. More information can be found here:\nhttps://kubernetes.io/docs/reference/config-api/kube-proxy-config.v1alpha1/#kubeproxy-config-k8s-io-v1alpha1-KubeProxyConfiguration"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "KubeVip": {
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enabled defines if embedded kube-vip should be enabled."
-        },
-        "interface": {
-          "type": "string",
-          "description": "Interface is the network interface on which the VIP is announced."
-        },
-        "gateway": {
-          "type": "string",
-          "description": "Gateway is the gateway address in CIDR notation (e.g., 10.100.0.1/24).\nThis is used to configure policy-based routing for the VIP and must include the subnet prefix."
         }
       },
       "additionalProperties": false,
@@ -3408,11 +3352,8 @@
           "description": "JoinNode holds configuration specifically used during joining the node (see \"kubeadm join\")."
         },
         "autoNodes": {
-          "items": {
-            "$ref": "#/$defs/PrivateNodesAutoNodes"
-          },
-          "type": "array",
-          "description": "AutoNodes stores auto nodes configuration."
+          "$ref": "#/$defs/PrivateNodesAutoNodes",
+          "description": "AutoNodes stores Auto Nodes configuration static and dynamic NodePools managed by Karpenter"
         },
         "vpn": {
           "$ref": "#/$defs/PrivateNodesVPN",
@@ -3425,17 +3366,6 @@
     },
     "PrivateNodesAutoNodes": {
       "properties": {
-        "provider": {
-          "type": "string",
-          "description": "Provider is the node provider of the nodes in this pool."
-        },
-        "properties": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object",
-          "description": "Properties are the node provider properties. This is a simple key value map and can contain things\nlike region, subscription, etc. that is then used by the node provider to create the nodes and node environment."
-        },
         "static": {
           "items": {
             "$ref": "#/$defs/StaticNodePool"
@@ -3453,9 +3383,6 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": [
-        "provider"
-      ],
       "description": "PrivateNodesAutoNodes defines auto nodes"
     },
     "PrivateNodesVPN": {
@@ -3491,10 +3418,6 @@
         "clusterRole": {
           "$ref": "#/$defs/RBACClusterRole",
           "description": "ClusterRole holds virtual cluster cluster role configuration"
-        },
-        "enableVolumeSnapshotRules": {
-          "$ref": "#/$defs/EnableAutoSwitch",
-          "description": "EnableVolumeSnapshotRules enables all required volume snapshot rules in the Role and\nClusterRole."
         }
       },
       "additionalProperties": false,
@@ -3952,12 +3875,12 @@
           "type": "integer",
           "description": "Quantity is the number of nodes to deploy for standalone mode."
         },
-        "nodeTypeSelector": {
+        "requirements": {
           "items": {
             "$ref": "#/$defs/Requirement"
           },
           "type": "array",
-          "description": "NodeTypeSelector filters the types of nodes that can be provisioned by this pool.\nAll requirements must be met for a node type to be eligible."
+          "description": "Requirements filter the types of nodes that can be provisioned by this pool.\nAll requirements must be met for a node type to be eligible."
         }
       },
       "additionalProperties": false,
@@ -4060,12 +3983,16 @@
           "type": "string",
           "description": "Name is the name of this static nodePool"
         },
-        "nodeTypeSelector": {
+        "provider": {
+          "type": "string",
+          "description": "Provider is the node provider of the nodes in this pool."
+        },
+        "requirements": {
           "items": {
             "$ref": "#/$defs/Requirement"
           },
           "type": "array",
-          "description": "NodeTypeSelector filters the types of nodes that can be provisioned by this pool.\nAll requirements must be met for a node type to be eligible."
+          "description": "Requirements filter the types of nodes that can be provisioned by this pool.\nAll requirements must be met for a node type to be eligible."
         },
         "taints": {
           "items": {
@@ -4094,6 +4021,7 @@
       "type": "object",
       "required": [
         "name",
+        "provider",
         "quantity"
       ]
     },
@@ -4372,10 +4300,6 @@
         "endpoints": {
           "$ref": "#/$defs/EnableSwitchWithPatches",
           "description": "Endpoints defines if endpoints created within the virtual cluster should get synced to the host cluster."
-        },
-        "endpointSlices": {
-          "$ref": "#/$defs/EnableSwitchWithPatches",
-          "description": "EndpointSlices defines if endpointslices created within the virtual cluster should get synced to the host cluster."
         },
         "networkPolicies": {
           "$ref": "#/$defs/EnableSwitchWithPatches",
