@@ -90,7 +90,7 @@ jobs:
           # commit changes
           git commit -m "chore: generate vCluster Platform partials for vCluster ${{ env.VERSION_TAG }}"
           git push -u origin -f "${branch_name}"
-          gh pr create --fill --head "${branch_name}" 
+          gh pr create --fill --head "${branch_name}"
           echo "Create PR in vcluster-docs"
 
       - name: Generate vCluster partials
@@ -101,39 +101,41 @@ jobs:
         run: |
           versionTag=${VERSION_TAG#"vcluster-v"}
           echo "parsed vCluster tag: ${versionTag}"
-          
+
+          VERSION_WITH_PATCH="${versionTag}.0"
+
           cd vcluster-docs
-          
+
           # Check if versioned docs folder exists for this version
-          if [ -d "vcluster_versioned_docs/version-${versionTag}.0" ]; then
-            echo "Version ${versionTag}.0 exists in versioned docs, generating partials there"
+          if [ -d "vcluster_versioned_docs/version-${VERSION_WITH_PATCH}" ]; then
+            echo "Version ${VERSION_WITH_PATCH} exists in versioned docs, generating partials there"
             # Create versioned config source directory
-            mkdir -p "configsrc/vcluster/${versionTag}"
-            cp ../vcluster.schema.json "configsrc/vcluster/${versionTag}/vcluster.schema.json"
-            cp ../config/values.yaml "configsrc/vcluster/${versionTag}/default_values.yaml"
-            
-            target_dir="vcluster_versioned_docs/version-${versionTag}.0/_partials/config"
+            mkdir -p "configsrc/vcluster/${VERSION_WITH_PATCH}"
+            cp ../vcluster.schema.json "configsrc/vcluster/${VERSION_WITH_PATCH}/vcluster.schema.json"
+            cp ../config/values.yaml "configsrc/vcluster/${VERSION_WITH_PATCH}/default_values.yaml"
+
+            target_dir="vcluster_versioned_docs/version-${VERSION_WITH_PATCH}/_partials/config"
           else
-            echo "Version ${versionTag}.0 does not exist in versioned docs, generating partials in main vcluster folder"
+            echo "Version ${VERSION_WITH_PATCH} does not exist in versioned docs, generating partials in main vcluster folder"
             # Use main config source directory
             mkdir -p "configsrc/vcluster/main"
             cp ../vcluster.schema.json "configsrc/vcluster/main/vcluster.schema.json"
             cp ../config/values.yaml "configsrc/vcluster/main/default_values.yaml"
-            
+
             # Also update the version-specific folder for future reference
-            mkdir -p "configsrc/vcluster/${versionTag}"
-            cp ../vcluster.schema.json "configsrc/vcluster/${versionTag}/vcluster.schema.json"
-            cp ../config/values.yaml "configsrc/vcluster/${versionTag}/default_values.yaml"
-            
+            mkdir -p "configsrc/vcluster/${VERSION_WITH_PATCH}"
+            cp ../vcluster.schema.json "configsrc/vcluster/${VERSION_WITH_PATCH}/vcluster.schema.json"
+            cp ../config/values.yaml "configsrc/vcluster/${VERSION_WITH_PATCH}/default_values.yaml"
+
             target_dir="vcluster/_partials/config"
           fi
 
-          branch_name="generate-partials-for-${VERSION_TAG}"
+          branch_name="generate-partials-for-${VERSION_WITH_PATCH}"
           git switch -c "${branch_name}"
 
           # generate vcluster partials for target directory
-          if [ -d "vcluster_versioned_docs/version-${versionTag}.0" ]; then
-            go run hack/vcluster/partials/main.go "configsrc/vcluster/${versionTag}" "${target_dir}"
+          if [ -d "vcluster_versioned_docs/version-${VERSION_WITH_PATCH}" ]; then
+            go run hack/vcluster/partials/main.go "configsrc/vcluster/${VERSION_WITH_PATCH}" "${target_dir}"
           else
             # For main docs, use the main config folder
             go run hack/vcluster/partials/main.go "configsrc/vcluster/main" "${target_dir}"
@@ -149,5 +151,5 @@ jobs:
           # commit changes
           git commit -m "chore: generate vCluster partials for vCluster ${versionTag}"
           git push -u origin -f "${branch_name}"
-          gh pr create --fill --head "${branch_name}" 
+          gh pr create --fill --head "${branch_name}"
           echo "Create PR in vcluster-docs"
