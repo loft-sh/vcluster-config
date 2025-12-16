@@ -7,8 +7,6 @@ sync:
       enabled: true
     endpoints:
       enabled: true
-    endpointSlices:
-        enabled: true
     persistentVolumeClaims:
       enabled: true
     configMaps:
@@ -30,10 +28,7 @@ sync:
       rewriteHosts:
         enabled: true
         initContainer:
-          image:
-            registry: "mirror.gcr.io"
-            repository: library/alpine
-            tag: "3.20"
+          image: "library/alpine:3.20"
           resources:
             limits:
               cpu: 30m
@@ -107,7 +102,7 @@ controlPlane:
       image:
         registry: ghcr.io
         repository: "loft-sh/kubernetes"
-        tag: "v1.34.0"
+        tag: "v1.32.8"
       apiServer:
         enabled: true
         command: []
@@ -138,7 +133,7 @@ controlPlane:
       image:
         registry: ""
         repository: "rancher/k3s"
-        tag: "v1.34.1-k3s1"
+        tag: "v1.32.7-k3s1"
       securityContext: {}
       resources:
         limits:
@@ -157,7 +152,6 @@ controlPlane:
         enabled: false
         dataSource: ""
         connector: ""
-        identityProvider: ""
         certFile: ""
         keyFile: ""
         caFile: ""
@@ -184,7 +178,7 @@ controlPlane:
           image:
             registry: "registry.k8s.io"
             repository: "etcd"
-            tag: "3.6.4-0"
+            tag: "3.5.25-0"
           imagePullPolicy: ""
           extraArgs: []
           env: []
@@ -291,6 +285,7 @@ controlPlane:
 
   standalone:
     dataDir: "/var/lib/vcluster"
+    bundleRepository: "https://github.com/loft-sh/kubernetes/releases/download"
     joinNode:
       enabled: true
       containerd:
@@ -312,8 +307,8 @@ controlPlane:
 
     resources:
       limits:
-        ephemeral-storage: 10Gi
-        memory: 4Gi
+        ephemeral-storage: 8Gi
+        memory: 2Gi
       requests:
         ephemeral-storage: 1Gi
         cpu: 200m
@@ -379,9 +374,6 @@ controlPlane:
         timeoutSeconds: 3
         periodSeconds: 6
 
-    initContainers: []
-    sidecarContainers: []
-
   serviceMonitor:
     enabled: false
     labels: {}
@@ -425,35 +417,24 @@ controlPlane:
         extraEnv: []
         extraArgs: []
 
-    cloudControllerManager:
-      enabled: true
-
     registry:
       enabled: false
       anonymousPull: true
       config: {}
-
-    kubeVip:
-      enabled: false
 
     globalMetadata:
       annotations: {}
 
 privateNodes:
   enabled: false
-  kubelet:
-    config: {}
+  importNodeBinaries: true
   autoUpgrade:
     enabled: true
     concurrency: 1
   joinNode:
     containerd:
       enabled: true
-  autoNodes: []
-  vpn:
-    enabled: false
-    nodeToNode:
-      enabled: false
+
 deploy:
   localPathProvisioner:
     enabled: true
@@ -468,7 +449,6 @@ deploy:
     tolerations: []
     extraEnv: []
     extraArgs: []
-    config: {}
   metallb:
     enabled: false
     ipAddressPool:
@@ -478,8 +458,6 @@ deploy:
     enabled: false
     defaultIngressClass: true
   metricsServer:
-    enabled: false
-  volumeSnapshotController:
     enabled: false
 
 integrations:
@@ -492,19 +470,14 @@ integrations:
     webhook:
       enabled: false
     sync:
-      toHost:
-        externalSecrets:
-          selector:
-            matchLabels: {}
-        stores:
-          enabled: false
-          selector:
-            matchLabels: {}
-      fromHost:
-        clusterStores:
-          enabled: false
-          selector:
-            matchLabels: {}
+      externalSecrets:
+        enabled: true
+      stores:
+        enabled: false
+      clusterStores:
+        enabled: false
+        selector:
+          labels: {}
   kubeVirt:
     enabled: false
     webhook:
@@ -555,8 +528,6 @@ rbac:
     enabled: auto
     overwriteRules: []
     extraRules: []
-  enableVolumeSnapshotRules:
-    enabled: auto
 
 networking:
   podCIDR: "10.244.0.0/16"
@@ -651,7 +622,11 @@ plugins: {}
 
 experimental:
   syncSettings:
+    targetNamespace: ""
     setOwner: true
+
+  isolatedControlPlane:
+    headless: false
 
   deploy:
     host:
@@ -661,6 +636,12 @@ experimental:
       manifests: ""
       manifestsTemplate: ""
       helm: []
+
+  genericSync:
+    clusterRole:
+      extraRules: []
+    role:
+      extraRules: []
 
 telemetry:
   enabled: true

@@ -23,27 +23,21 @@ const (
 
 // K3SVersionMap holds the supported k3s versions
 var K3SVersionMap = map[string]string{
-	"1.34": "rancher/k3s:v1.34.1-k3s1",
-	"1.33": "rancher/k3s:v1.33.3-k3s1",
-	"1.32": "rancher/k3s:v1.32.1-k3s1",
+	"1.32": "rancher/k3s:v1.32.7-k3s1",
 	"1.31": "rancher/k3s:v1.31.1-k3s1",
 	"1.30": "rancher/k3s:v1.30.2-k3s1",
 }
 
 // K8SVersionMap holds the supported k8s api servers
 var K8SVersionMap = map[string]string{
-	"1.34": "ghcr.io/loft-sh/kubernetes:v1.34.0",
-	"1.33": "ghcr.io/loft-sh/kubernetes:v1.33.4",
-	"1.32": "ghcr.io/loft-sh/kubernetes:v1.32.1",
+	"1.32": "ghcr.io/loft-sh/kubernetes:v1.32.8",
 	"1.31": "ghcr.io/loft-sh/kubernetes:v1.31.1",
 	"1.30": "ghcr.io/loft-sh/kubernetes:v1.30.2",
 }
 
 // K8SEtcdVersionMap holds the supported etcd
 var K8SEtcdVersionMap = map[string]string{
-	"1.34": "registry.k8s.io/etcd:3.6.4-0",
-	"1.33": "registry.k8s.io/etcd:3.5.21-0",
-	"1.32": "registry.k8s.io/etcd:3.5.21-0",
+	"1.32": "registry.k8s.io/etcd:3.5.25-0",
 	"1.31": "registry.k8s.io/etcd:3.5.15-0",
 	"1.30": "registry.k8s.io/etcd:3.5.13-0",
 }
@@ -93,31 +87,26 @@ func getExtraValues(options *ExtraValuesOptions) (*Config, error) {
 	return vConfig, nil
 }
 
-func ParseImageRef(ref string, image *Image) {
-	*image = Image{}
-
-	splitRepoAndTag := func(s string) {
-		split := strings.SplitN(s, ":", 2)
-		switch len(split) {
-		case 1:
-			image.Repository = s
-		case 2:
-			image.Repository = split[0]
-			image.Tag = split[1]
-		}
-		image.Repository = strings.TrimPrefix(image.Repository, "library/")
+func SplitImage(image string) (string, string, string) {
+	imageSplitted := strings.Split(image, ":")
+	if len(imageSplitted) == 1 {
+		return "", "", ""
 	}
 
-	parts := strings.SplitN(ref, "/", 2)
-	switch {
-	case len(parts) == 1: // <repo>[:<tag>]
-		splitRepoAndTag(parts[0])
-	case strings.ContainsAny(parts[0], ".:"): // <registry>/<repo>[:<tag>]
-		image.Registry = parts[0]
-		splitRepoAndTag(parts[1])
-	default: // <repo/repo>[:<tag]
-		splitRepoAndTag(ref)
+	// check if registry needs to be filled
+	registryAndRepository := strings.Join(imageSplitted[:len(imageSplitted)-1], ":")
+	parts := strings.Split(registryAndRepository, "/")
+	registry := ""
+	repository := strings.Join(parts, "/")
+	if len(parts) >= 2 && (strings.ContainsRune(parts[0], '.') || strings.ContainsRune(parts[0], ':')) {
+		// The first part of the repository is treated as the registry domain
+		// iff it contains a '.' or ':' character, otherwise it is all repository
+		// and the domain defaults to Docker Hub.
+		registry = parts[0]
+		repository = strings.Join(parts[1:], "/")
 	}
+
+	return registry, repository, imageSplitted[len(imageSplitted)-1]
 }
 
 func addCommonReleaseValues(config *Config, options *ExtraValuesOptions) {
