@@ -282,6 +282,28 @@ func TestConfig_IsProFeatureEnabled(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "Isolated Control Plane not used",
+			config: &Config{
+				Experimental: Experimental{
+					IsolatedControlPlane: ExperimentalIsolatedControlPlane{
+						Enabled: false,
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "Isolated Control Plane used",
+			config: &Config{
+				Experimental: Experimental{
+					IsolatedControlPlane: ExperimentalIsolatedControlPlane{
+						Enabled: true,
+					},
+				},
+			},
+			expected: true,
+		},
+		{
 			name: "Deny Proxy Requests not used",
 			config: &Config{
 				Experimental: Experimental{
