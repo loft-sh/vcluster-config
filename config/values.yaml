@@ -7,6 +7,8 @@ sync:
       enabled: true
     endpoints:
       enabled: true
+    endpointSlices:
+        enabled: true
     persistentVolumeClaims:
       enabled: true
     configMaps:
@@ -105,7 +107,7 @@ controlPlane:
       image:
         registry: ghcr.io
         repository: "loft-sh/kubernetes"
-        tag: "v1.33.4"
+        tag: "v1.34.0"
       apiServer:
         enabled: true
         command: []
@@ -136,7 +138,7 @@ controlPlane:
       image:
         registry: ""
         repository: "rancher/k3s"
-        tag: "v1.33.3-k3s1"
+        tag: "v1.34.1-k3s1"
       securityContext: {}
       resources:
         limits:
@@ -155,6 +157,7 @@ controlPlane:
         enabled: false
         dataSource: ""
         connector: ""
+        identityProvider: ""
         certFile: ""
         keyFile: ""
         caFile: ""
@@ -280,9 +283,9 @@ controlPlane:
     pathType: ImplementationSpecific
     labels: {}
     annotations:
-      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
-      nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS # ingress-nginx has been deprecated
+      nginx.ingress.kubernetes.io/ssl-passthrough: "true" # ingress-nginx has been deprecated
+      nginx.ingress.kubernetes.io/ssl-redirect: "true" # ingress-nginx has been deprecated
     spec:
       tls: []
 
@@ -309,8 +312,8 @@ controlPlane:
 
     resources:
       limits:
-        ephemeral-storage: 8Gi
-        memory: 2Gi
+        ephemeral-storage: 10Gi
+        memory: 4Gi
       requests:
         ephemeral-storage: 1Gi
         cpu: 200m
@@ -376,6 +379,9 @@ controlPlane:
         timeoutSeconds: 3
         periodSeconds: 6
 
+    initContainers: []
+    sidecarContainers: []
+
   serviceMonitor:
     enabled: false
     labels: {}
@@ -427,8 +433,14 @@ controlPlane:
       anonymousPull: true
       config: {}
 
+    kubeVip:
+      enabled: false
+
     globalMetadata:
       annotations: {}
+
+    podDisruptionBudget:
+      enabled: false
 
 privateNodes:
   enabled: false
@@ -440,9 +452,7 @@ privateNodes:
   joinNode:
     containerd:
       enabled: true
-  autoNodes:
-    static: []
-    dynamic: []
+  autoNodes: []
   vpn:
     enabled: false
     nodeToNode:
@@ -548,6 +558,8 @@ rbac:
     enabled: auto
     overwriteRules: []
     extraRules: []
+  enableVolumeSnapshotRules:
+    enabled: auto
 
 networking:
   podCIDR: "10.244.0.0/16"
@@ -607,11 +619,12 @@ policies:
     labels: {}
     annotations: {}
     fallbackDns: 8.8.8.8
-    extraControlPlaneRules: []
-    extraWorkloadRules: []
-    outgoingConnections:
-      platform: true
-      ipBlock:
+    controlPlane:
+      ingress: []
+      egress: []
+    workload:
+      publicEgress:
+        enabled: true
         cidr: 0.0.0.0/0
         except:
           - 100.64.0.0/10
@@ -619,6 +632,8 @@ policies:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+      ingress: []
+      egress: []
 
   centralAdmission:
     validatingWebhooks: []
@@ -635,12 +650,16 @@ exportKubeConfig:
   secret:
     name: ""
     namespace: ""
+  additionalSecrets: []
 
 external: {}
 
 plugins: {}
 
 experimental:
+  proxy:
+    customResources: {}
+
   syncSettings:
     setOwner: true
 

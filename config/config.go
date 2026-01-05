@@ -12,6 +12,7 @@ import (
 
 	"github.com/invopop/jsonschema"
 	yamlv3 "gopkg.in/yaml.v3"
+	policyv1 "k8s.io/api/policy/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -109,8 +110,8 @@ type PrivateNodes struct {
 	// JoinNode holds configuration specifically used during joining the node (see "kubeadm join").
 	JoinNode JoinConfiguration `json:"joinNode,omitempty"`
 
-	// AutoNodes stores Auto Nodes configuration static and dynamic NodePools managed by Karpenter
-	AutoNodes PrivateNodesAutoNodes `json:"autoNodes,omitempty"`
+	// AutoNodes stores auto nodes configuration.
+	AutoNodes []PrivateNodesAutoNodes `json:"autoNodes,omitempty"`
 
 	// VPN holds configuration for the private nodes vpn. This can be used to connect the private nodes to the control plane or
 	// connect the private nodes to each other if they are not running in the same network. Platform connection is required for the vpn to work.
@@ -139,6 +140,13 @@ type PrivateNodesVPNNodeToNode struct {
 
 // PrivateNodesAutoNodes defines auto nodes
 type PrivateNodesAutoNodes struct {
+	// Provider is the node provider of the nodes in this pool.
+	Provider string `json:"provider,omitempty" jsonschema:"required"`
+
+	// Properties are the node provider properties. This is a simple key value map and can contain things
+	// like region, subscription, etc. that is then used by the node provider to create the nodes and node environment.
+	Properties map[string]string `json:"properties,omitempty"`
+
 	// Static defines static node pools. Static node pools have a fixed size and are not scaled automatically.
 	Static []StaticNodePool `json:"static,omitempty"`
 
@@ -151,12 +159,9 @@ type DynamicNodePool struct {
 	// Name is the name of this NodePool
 	Name string `json:"name" jsonschema:"required"`
 
-	// Provider is the node provider of the nodes in this pool.
-	Provider string `json:"provider,omitempty" jsonschema:"required"`
-
-	// Requirements filter the types of nodes that can be provisioned by this pool.
+	// NodeTypeSelector filters the types of nodes that can be provisioned by this pool.
 	// All requirements must be met for a node type to be eligible.
-	Requirements []Requirement `json:"requirements,omitempty"`
+	NodeTypeSelector []Requirement `json:"nodeTypeSelector,omitempty"`
 
 	// Taints are the taints to apply to the nodes in this pool.
 	Taints []KubeletJoinTaint `json:"taints,omitempty"`
@@ -232,12 +237,9 @@ type StaticNodePool struct {
 	// Name is the name of this static nodePool
 	Name string `json:"name" jsonschema:"required"`
 
-	// Provider is the node provider of the nodes in this pool.
-	Provider string `json:"provider,omitempty" jsonschema:"required"`
-
-	// Requirements filter the types of nodes that can be provisioned by this pool.
+	// NodeTypeSelector filters the types of nodes that can be provisioned by this pool.
 	// All requirements must be met for a node type to be eligible.
-	Requirements []Requirement `json:"requirements,omitempty"`
+	NodeTypeSelector []Requirement `json:"nodeTypeSelector,omitempty"`
 
 	// Taints are the taints to apply to the nodes in this pool.
 	Taints []KubeletJoinTaint `json:"taints,omitempty"`
@@ -294,6 +296,7 @@ type Deploy struct {
 	LocalPathProvisioner LocalPathProvisioner `json:"localPathProvisioner,omitempty"`
 
 	// IngressNginx holds dedicated ingress-nginx configuration.
+	// Deprecated: We do not deploy ingress nginx and the project is being deprecated.
 	IngressNginx IngressNginx `json:"ingressNginx,omitempty"`
 
 	// MetricsServer holds dedicated metrics server configuration.
@@ -365,9 +368,9 @@ type StandaloneAutoNodes struct {
 	// Quantity is the number of nodes to deploy for standalone mode.
 	Quantity int `json:"quantity,omitempty"`
 
-	// Requirements filter the types of nodes that can be provisioned by this pool.
+	// NodeTypeSelector filters the types of nodes that can be provisioned by this pool.
 	// All requirements must be met for a node type to be eligible.
-	Requirements []Requirement `json:"requirements,omitempty"`
+	NodeTypeSelector []Requirement `json:"nodeTypeSelector,omitempty"`
 }
 
 type StandaloneJoinNode struct {
@@ -678,6 +681,9 @@ type Integrations struct {
 
 	// Istio syncs DestinationRules, Gateways and VirtualServices from virtual cluster to the host.
 	Istio Istio `json:"istio,omitempty"`
+
+	// Netris integration helps configuring netris networking for vCluster.
+	Netris map[string]interface{} `json:"netris,omitempty"`
 }
 
 // CertManager reuses a host cert-manager and makes its CRDs from it available inside the vCluster
@@ -935,10 +941,13 @@ func ValidateChanges(oldCfg, newCfg *Config) error {
 	if err := ValidateStoreChanges(newCfg.BackingStoreType(), oldCfg.BackingStoreType()); err != nil {
 		return err
 	}
-
 	if err := ValidateNamespaceSyncChanges(oldCfg, newCfg); err != nil { //nolint:revive
 		return err
 	}
+	if err := ValidateVPNChanges(oldCfg, newCfg); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -996,6 +1005,18 @@ func ValidateNamespaceSyncChanges(oldCfg, newCfg *Config) error {
 
 	if !reflect.DeepEqual(oldNamespaceConf.Patches, newNamespaceConf.Patches) {
 		return fmt.Errorf("sync.toHost.namespaces.patches is not allowed to be changed")
+	}
+
+	return nil
+}
+
+func ValidateVPNChanges(oldCfg *Config, newCfg *Config) error {
+	if oldCfg.PrivateNodes.VPN.Enabled != newCfg.PrivateNodes.VPN.Enabled {
+		return fmt.Errorf("privateNodes.vpn.enabled is not allowed to be changed")
+	}
+
+	if oldCfg.PrivateNodes.VPN.NodeToNode.Enabled != newCfg.PrivateNodes.VPN.NodeToNode.Enabled {
+		return fmt.Errorf("privateNodes.vpn.nodeToNode.enabled is not allowed to be changed")
 	}
 
 	return nil
@@ -1184,6 +1205,9 @@ type SyncToHost struct {
 
 	// Endpoints defines if endpoints created within the virtual cluster should get synced to the host cluster.
 	Endpoints EnableSwitchWithPatches `json:"endpoints,omitempty"`
+
+	// EndpointSlices defines if endpointslices created within the virtual cluster should get synced to the host cluster.
+	EndpointSlices EnableSwitchWithPatches `json:"endpointSlices,omitempty"`
 
 	// NetworkPolicies defines if network policies created within the virtual cluster should get synced to the host cluster.
 	NetworkPolicies EnableSwitchWithPatches `json:"networkPolicies,omitempty"`
@@ -1765,6 +1789,18 @@ func (c ControlPlane) JSONSchemaExtend(base *jsonschema.Schema) {
 	addProToJSONSchema(base, reflect.TypeOf(c))
 }
 
+type KubeVip struct {
+	// Enabled defines if embedded kube-vip should be enabled.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Interface is the network interface on which the VIP is announced.
+	Interface string `json:"interface,omitempty"`
+
+	// Gateway is the gateway address in CIDR notation (e.g., 10.100.0.1/24).
+	// This is used to configure policy-based routing for the VIP and must include the subnet prefix.
+	Gateway string `json:"gateway,omitempty"`
+}
+
 type ControlPlaneStatefulSet struct {
 	// HighAvailability holds options related to high availability.
 	HighAvailability ControlPlaneHighAvailability `json:"highAvailability,omitempty"`
@@ -1817,6 +1853,12 @@ type ControlPlaneStatefulSet struct {
 
 	// Specifies the DNS parameters of a pod.
 	DNSConfig *PodDNSConfig `json:"dnsConfig,omitempty"`
+
+	// InitContainers are additional init containers for the statefulSet.
+	InitContainers []interface{} `json:"initContainers,omitempty"`
+
+	// SidecarContainers are additional sidecar containers for the statefulSet.
+	SidecarContainers []interface{} `json:"sidecarContainers,omitempty"`
 }
 
 type Distro struct {
@@ -1842,8 +1884,7 @@ type DistroK8s struct {
 	// Enabled specifies if the K8s distro should be enabled. Only one distro can be enabled at the same time.
 	Enabled bool `json:"enabled,omitempty"`
 
-	// [Deprecated] Version field is deprecated.
-	// Use controlPlane.distro.k8s.image.tag to specify the Kubernetes version instead.
+	// Version is the Kubernetes version to use.
 	Version string `json:"version,omitempty"`
 
 	// APIServer holds configuration specific to starting the api server.
@@ -2012,10 +2053,15 @@ type DatabaseKine struct {
 	Enabled bool `json:"enabled,omitempty"`
 
 	// DataSource is the kine dataSource to use for the database. This depends on the database format.
-	// This is optional for the embedded database. Examples:
+	// This is optional for the external database. Examples:
 	// * mysql: mysql://username:password@tcp(hostname:3306)/k3s
 	// * postgres: postgres://username:password@hostname:5432/k3s
 	DataSource string `json:"dataSource,omitempty"`
+
+	// IdentityProvider is the kine identity provider to use when generating temporary authentication tokens for enhanced security.
+	// This is optional for the external database. Examples:
+	// * aws: RDS IAM Authentication
+	IdentityProvider string `json:"identityProvider,omitempty"`
 
 	// KeyFile is the key file to use for the database. This is optional.
 	KeyFile string `json:"keyFile,omitempty"`
@@ -2326,6 +2372,13 @@ type ControlPlaneAdvanced struct {
 
 	// GlobalMetadata is metadata that will be added to all resources deployed by Helm.
 	GlobalMetadata ControlPlaneGlobalMetadata `json:"globalMetadata,omitempty"`
+
+	// KubeVip holds configuration for embedded kube-vip that announces the virtual cluster endpoint IP on layer 2.
+	KubeVip KubeVip `json:"kubeVip,omitempty"`
+
+	// PodDisruptionBudget limits how many pods of an application can be voluntarily disrupted at once
+	// to ensure availability during maintenance or scaling operations.
+	PodDisruptionBudget PodDisruptionBudget `json:"podDisruptionBudget,omitempty"`
 }
 
 type Registry struct {
@@ -2345,6 +2398,29 @@ type ControlPlaneHeadlessService struct {
 
 	// Labels are extra labels for this resource.
 	Labels map[string]string `json:"labels,omitempty"`
+}
+
+type Proxy struct {
+	// CustomResources is a map of resource keys (format: "kind.apiGroup/version") to proxy configuration
+	CustomResources map[string]CustomResourceProxy `json:"customResources,omitempty"`
+}
+
+type AccessResourcesMode string
+
+const (
+	AccessResourcesModeOwned AccessResourcesMode = "owned"
+	AccessResourcesModeAll   AccessResourcesMode = "all"
+)
+
+type CustomResourceProxy struct {
+	// Enabled defines if this resource proxy should be enabled
+	Enabled bool `json:"enabled,omitempty"`
+
+	// TargetVirtualCluster is the target virtual cluster for the custom resource proxy
+	TargetVirtualCluster string `json:"targetVirtualCluster,omitempty"`
+
+	// AccessResources defines which resources should be accessible in the proxy.
+	AccessResources AccessResourcesMode `json:"accessResources,omitempty"`
 }
 
 type ExternalEtcdPersistence struct {
@@ -2577,6 +2653,22 @@ type ControlPlaneGlobalMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
+type PodDisruptionBudget struct {
+	// Enabled defines if the pod disruption budget should be enabled.
+	Enabled bool `json:"enabled,omitempty"`
+	// MinAvailable describes the minimal number or percentage of available pods.
+	MinAvailable interface{} `json:"minAvailable,omitempty"`
+	// MaxUnavailable describes the minimal number or percentage of unavailable pods.
+	MaxUnavailable interface{} `json:"maxUnavailable,omitempty"`
+	// UnhealthyPodEvictionPolicy defines the criteria when unhealthy pods should be considered for eviction.
+	// Currently supported values are:
+	// * IfHealthyBudget - pods that are in the Running phase but not yet healthy are considered disrupted
+	//	and may be evicted even if the PodDisruptionBudget criteria are not met.
+	// * AlwaysAllow - pods that are in the Running phase but not yet healthy are considered disrupted
+	//	and can be evicted regardless of whether the criteria in a PDB is met.
+	UnhealthyPodEvictionPolicy *policyv1.UnhealthyPodEvictionPolicyType `json:"unhealthyPodEvictionPolicy,omitempty"`
+}
+
 type LabelsAndAnnotations struct {
 	// Annotations are extra annotations for this resource.
 	Annotations map[string]string `json:"annotations,omitempty"`
@@ -2647,39 +2739,163 @@ type NetworkPolicy struct {
 	// Enabled defines if the network policy should be deployed by vCluster.
 	Enabled bool `json:"enabled,omitempty"`
 
+	LabelsAndAnnotations `json:",inline"`
+
 	// FallbackDNS is the fallback DNS server to use if the virtual cluster does not have a DNS server.
 	FallbackDNS string `json:"fallbackDns,omitempty"`
 
-	// OutgoingConnections are the outgoing connections options for the vCluster workloads.
-	OutgoingConnections OutgoingConnections `json:"outgoingConnections,omitempty"`
+	// ControlPlane network policy rules
+	ControlPlane NetworkPolicyControlPlane `json:"controlPlane,omitempty"`
 
-	// ExtraControlPlaneRules are extra allowed rules for the vCluster control plane.
-	ExtraControlPlaneRules []map[string]interface{} `json:"extraControlPlaneRules,omitempty"`
-
-	// ExtraWorkloadRules are extra allowed rules for the vCluster workloads.
-	ExtraWorkloadRules []map[string]interface{} `json:"extraWorkloadRules,omitempty"`
-
-	LabelsAndAnnotations `json:",inline"`
+	// Workload network policy rules
+	Workload NetworkPolicyWorkload `json:"workload,omitempty"`
 }
 
+type NetworkPolicyControlPlane struct {
+	// Ingress rules for the vCluster control plane.
+	Ingress []NetworkPolicyIngressRule `json:"ingress,omitempty"`
+
+	// Egress rules for the vCluster control plane.
+	Egress []NetworkPolicyEgressRule `json:"egress,omitempty"`
+}
+
+type NetworkPolicyWorkload struct {
+	// PublicEgress holds the public outgoing connections options for the vCluster workloads.
+	PublicEgress NetworkPolicyWorkloadPublicEgress `json:"publicEgress,omitempty"`
+
+	// Ingress rules for the vCluster workloads.
+	Ingress []NetworkPolicyIngressRule `json:"ingress,omitempty"`
+
+	// Egress rules for the vCluster workloads.
+	Egress []NetworkPolicyEgressRule `json:"egress,omitempty"`
+}
+
+// NetworkPolicyIngressRule describes a particular set of traffic that is allowed to the pods
+// matched by a NetworkPolicySpec's podSelector. The traffic must match both ports and from.
+type NetworkPolicyIngressRule struct {
+	// ports is a list of ports which should be made accessible on the pods selected for
+	// this rule. Each item in this list is combined using a logical OR. If this field is
+	// empty or missing, this rule matches all ports (traffic not restricted by port).
+	// If this field is present and contains at least one item, then this rule allows
+	// traffic only if the traffic matches at least one port in the list.
+	// +optional
+	// +listType=atomic
+	Ports []NetworkPolicyPort `json:"ports,omitempty"`
+
+	// from is a list of sources which should be able to access the pods selected for this rule.
+	// Items in this list are combined using a logical OR operation. If this field is
+	// empty or missing, this rule matches all sources (traffic not restricted by
+	// source). If this field is present and contains at least one item, this rule
+	// allows traffic only if the traffic matches at least one item in the from list.
+	// +optional
+	// +listType=atomic
+	From []NetworkPolicyPeer `json:"from,omitempty"`
+}
+
+// NetworkPolicyEgressRule describes a particular set of traffic that is allowed out of pods
+// matched by a NetworkPolicySpec's podSelector. The traffic must match both ports and to.
+// This type is beta-level in 1.8
+type NetworkPolicyEgressRule struct {
+	// ports is a list of destination ports for outgoing traffic.
+	// Each item in this list is combined using a logical OR. If this field is
+	// empty or missing, this rule matches all ports (traffic not restricted by port).
+	// If this field is present and contains at least one item, then this rule allows
+	// traffic only if the traffic matches at least one port in the list.
+	// +optional
+	// +listType=atomic
+	Ports []NetworkPolicyPort `json:"ports,omitempty"`
+
+	// to is a list of destinations for outgoing traffic of pods selected for this rule.
+	// Items in this list are combined using a logical OR operation. If this field is
+	// empty or missing, this rule matches all destinations (traffic not restricted by
+	// destination). If this field is present and contains at least one item, this rule
+	// allows traffic only if the traffic matches at least one item in the to list.
+	// +optional
+	// +listType=atomic
+	To []NetworkPolicyPeer `json:"to,omitempty"`
+}
+
+// NetworkPolicyPort describes a port to allow traffic on
+type NetworkPolicyPort struct {
+	// protocol represents the protocol (TCP, UDP, or SCTP) which traffic must match.
+	// If not specified, this field defaults to TCP.
+	// +optional
+	Protocol *string `json:"protocol,omitempty"`
+
+	// port represents the port on the given protocol. This can either be a numerical or named
+	// port on a pod. If this field is not provided, this matches all port names and
+	// numbers.
+	// If present, only traffic on the specified protocol AND port will be matched.
+	// +optional
+	Port interface{} `json:"port,omitempty"`
+
+	// endPort indicates that the range of ports from port to endPort if set, inclusive,
+	// should be allowed by the policy. This field cannot be defined if the port field
+	// is not defined or if the port field is defined as a named (string) port.
+	// The endPort must be equal or greater than port.
+	// +optional
+	EndPort *int32 `json:"endPort,omitempty"`
+}
+
+// NetworkPolicyPeer describes a peer to allow traffic to/from. Only certain combinations of
+// fields are allowed
+type NetworkPolicyPeer struct {
+	// podSelector is a label selector which selects pods. This field follows standard label
+	// selector semantics; if present but empty, it selects all pods.
+	//
+	// If namespaceSelector is also set, then the NetworkPolicyPeer as a whole selects
+	// the pods matching podSelector in the Namespaces selected by NamespaceSelector.
+	// Otherwise it selects the pods matching podSelector in the policy's own namespace.
+	// +optional
+	PodSelector *StandardLabelSelector `json:"podSelector,omitempty"`
+
+	// namespaceSelector selects namespaces using cluster-scoped labels. This field follows
+	// standard label selector semantics; if present but empty, it selects all namespaces.
+	//
+	// If podSelector is also set, then the NetworkPolicyPeer as a whole selects
+	// the pods matching podSelector in the namespaces selected by namespaceSelector.
+	// Otherwise it selects all pods in the namespaces selected by namespaceSelector.
+	// +optional
+	NamespaceSelector *StandardLabelSelector `json:"namespaceSelector,omitempty"`
+
+	// ipBlock defines policy on a particular IPBlock. If this field is set then
+	// neither of the other fields can be.
+	// +optional
+	IPBlock *IPBlock `json:"ipBlock,omitempty"`
+}
+
+type NetworkPolicyWorkloadPublicEgress struct {
+	// Enabled defines if the workload public egress should be enabled or disabled.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// CIDR defines the allowed workload public egress destination.
+	// Valid examples are "0.0.0.0/0", "192.168.1.0/24" or "2001:db8::/64"
+	CIDR string `json:"cidr,omitempty"`
+
+	// Except is a slice of CIDRs that should not be included. Items outside the cidr range will be rejected.
+	// Valid examples are "192.168.1.0/24" or "2001:db8::/64".
+	// +optional
+	Except []string `json:"except,omitempty"`
+}
+
+// OutgoingConnections to be removed via legacyconfig cleanup.
 type OutgoingConnections struct {
 	// IPBlock describes a particular CIDR (Ex. "192.168.1.0/24","2001:db8::/64") that is allowed
 	// to the pods matched by a NetworkPolicySpec's podSelector. The except entry describes CIDRs
 	// that should not be included within this rule.
 	IPBlock IPBlock `json:"ipBlock,omitempty"`
-
-	// Platform enables egress access towards loft platform
-	Platform bool `json:"platform,omitempty"`
 }
 
+// IPBlock describes a particular CIDR (Ex. "192.168.1.0/24","2001:db8::/64") that is allowed
+// to the pods matched by a NetworkPolicySpec's podSelector. The except entry describes CIDRs
+// that should not be included within this rule.
 type IPBlock struct {
-	// cidr is a string representing the IPBlock
-	// Valid examples are "192.168.1.0/24" or "2001:db8::/64"
+	// CIDR defines the allowed workload public egress destination.
+	// Valid examples are "0.0.0.0/0", "192.168.1.0/24" or "2001:db8::/64"
 	CIDR string `json:"cidr,omitempty"`
 
-	// except is a slice of CIDRs that should not be included within an IPBlock
-	// Valid examples are "192.168.1.0/24" or "2001:db8::/64"
-	// Except values will be rejected if they are outside the cidr range
+	// Except is a slice of CIDRs that should not be included. Items outside the cidr range will be rejected.
+	// Valid examples are "192.168.1.0/24" or "2001:db8::/64".
 	// +optional
 	Except []string `json:"except,omitempty"`
 }
@@ -2845,6 +3061,10 @@ type RBAC struct {
 
 	// ClusterRole holds virtual cluster cluster role configuration
 	ClusterRole RBACClusterRole `json:"clusterRole,omitempty"`
+
+	// EnableVolumeSnapshotRules enables all required volume snapshot rules in the Role and
+	// ClusterRole.
+	EnableVolumeSnapshotRules EnableAutoSwitch `json:"enableVolumeSnapshotRules,omitempty"`
 }
 
 type RBACClusterRole struct {
@@ -2892,6 +3112,9 @@ type Experimental struct {
 
 	// DenyProxyRequests denies certain requests in the vCluster proxy.
 	DenyProxyRequests []DenyRule `json:"denyProxyRequests,omitempty" product:"pro"`
+
+	// Proxy enables vCluster-to-vCluster proxying of resources
+	Proxy Proxy `json:"proxy,omitempty"`
 }
 
 func (e Experimental) JSONSchemaExtend(base *jsonschema.Schema) {
