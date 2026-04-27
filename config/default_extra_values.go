@@ -52,8 +52,9 @@ var K8SEtcdVersionMap = map[string]string{
 type ExtraValuesOptions struct {
 	Distro string
 
-	Expose   bool
-	NodePort bool
+	Expose            bool
+	NodePort          bool
+	KubernetesVersion KubernetesVersion
 
 	DisableTelemetry    bool
 	InstanceCreatorType string
@@ -67,22 +68,13 @@ type KubernetesVersion struct {
 	Minor string
 }
 
-func GetExtraValuesNoDiff(options *ExtraValuesOptions) (*Config, error) {
-	toConfig, err := getExtraValues(options)
-	if err != nil {
-		return nil, fmt.Errorf("get extra values: %w", err)
-	}
-
-	return toConfig, nil
-}
-
 func GetExtraValues(options *ExtraValuesOptions) (string, error) {
 	fromConfig, err := NewDefaultConfig()
 	if err != nil {
 		return "", err
 	}
 
-	toConfig, err := GetExtraValuesNoDiff(options)
+	toConfig, err := getExtraValues(options)
 	if err != nil {
 		return "", fmt.Errorf("get extra values: %w", err)
 	}
