@@ -389,10 +389,10 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 		}
 
 		if oldConfig.Isolation.NetworkPolicy.OutgoingConnections.IPBlock.CIDR != "" {
-			newConfig.Policies.NetworkPolicy.Workload.PublicEgress.CIDR = oldConfig.Isolation.NetworkPolicy.OutgoingConnections.IPBlock.CIDR
+			newConfig.Policies.NetworkPolicy.OutgoingConnections.IPBlock.CIDR = oldConfig.Isolation.NetworkPolicy.OutgoingConnections.IPBlock.CIDR
 		}
 		if len(oldConfig.Isolation.NetworkPolicy.OutgoingConnections.IPBlock.Except) > 0 {
-			newConfig.Policies.NetworkPolicy.Workload.PublicEgress.Except = oldConfig.Isolation.NetworkPolicy.OutgoingConnections.IPBlock.Except
+			newConfig.Policies.NetworkPolicy.OutgoingConnections.IPBlock.Except = oldConfig.Isolation.NetworkPolicy.OutgoingConnections.IPBlock.Except
 		}
 
 		if len(oldConfig.Isolation.LimitRange.Default) > 0 {
@@ -412,7 +412,7 @@ func convertBaseValues(oldConfig BaseHelm, newConfig *config.Config) error {
 		}
 
 		if oldConfig.Isolation.Namespace != nil {
-			return fmt.Errorf("isolation.namespace is no longer supported")
+			return fmt.Errorf("isolation.namespace is no longer supported, use experimental.syncSettings.targetNamespace instead")
 		}
 		if oldConfig.Isolation.NodeProxyPermission.Enabled != nil {
 			return fmt.Errorf("isolation.nodeProxyPermission.enabled is no longer supported, use rbac.clusterRole.overwriteRules instead")
@@ -815,7 +815,11 @@ func migrateFlag(distro, key, value string, newConfig *config.Config) error {
 
 		newConfig.ControlPlane.Proxy.ExtraSANs = append(newConfig.ControlPlane.Proxy.ExtraSANs, strings.Split(value, ",")...)
 	case "target-namespace":
-		return fmt.Errorf("this is not supported anymore, vCluster needs to be created in the same namespace as the target workloads")
+		if value == "" {
+			return fmt.Errorf("value is missing")
+		}
+
+		newConfig.Experimental.SyncSettings.TargetNamespace = value
 	case "service-name":
 		return fmt.Errorf("this is not supported anymore, the service needs to be the vCluster name")
 	case "name":
